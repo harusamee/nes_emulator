@@ -1,0 +1,290 @@
+use lazy_static::lazy_static;
+use std::collections::HashMap;
+
+#[derive(Debug)]
+pub enum Opcodes {
+    ADC,
+    AND,
+    ASL,
+    BCC,
+    BCS,
+    BEQ,
+    BIT,
+    BMI,
+    BNE,
+    BPL,
+    BRK,
+    BVC,
+    BVS,
+    CLC,
+    CLD,
+    CLI,
+    CLV,
+    CMP,
+    CPX,
+    CPY,
+    DEC,
+    DEX,
+    DEY,
+    EOR,
+    INC,
+    INX,
+    INY,
+    JMP,
+    JSR,
+    LDA,
+    LDX,
+    LDY,
+    LSR,
+    NOP,
+    ORA,
+    PHA,
+    PHP,
+    PLA,
+    PLP,
+    ROL,
+    ROR,
+    RTI,
+    RTS,
+    SBC,
+    SEC,
+    SED,
+    SEI,
+    STA,
+    STX,
+    STY,
+    TAX,
+    TAY,
+    TSX,
+    TXA,
+    TXS,
+    TYA,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+pub enum AddressingMode {
+    Accumulator,
+    Immediate,
+    ZeroPage,
+    ZeroPageX,
+    ZeroPageY,
+    Absolute,
+    AbsoluteX,
+    AbsoluteY,
+    Indirect,
+    IndirectX,
+    IndirectY,
+    Relative,
+    Implied,
+}
+
+type OpcodeValue = (Opcodes, AddressingMode);
+lazy_static! {
+    pub static ref OPCODES: HashMap<u8, OpcodeValue> = HashMap::from([
+        (0x69, (Opcodes::ADC, AddressingMode::Immediate)),
+        (0x65, (Opcodes::ADC, AddressingMode::ZeroPage)),
+        (0x75, (Opcodes::ADC, AddressingMode::ZeroPageX)),
+        (0x6D, (Opcodes::ADC, AddressingMode::Absolute)),
+        (0x7D, (Opcodes::ADC, AddressingMode::AbsoluteX)),
+        (0x79, (Opcodes::ADC, AddressingMode::AbsoluteY)),
+        (0x61, (Opcodes::ADC, AddressingMode::IndirectX)),
+        (0x71, (Opcodes::ADC, AddressingMode::IndirectY)),
+
+        (0x29, (Opcodes::AND, AddressingMode::Immediate)),
+        (0x25, (Opcodes::AND, AddressingMode::ZeroPage)),
+        (0x35, (Opcodes::AND, AddressingMode::ZeroPageX)),
+        (0x2D, (Opcodes::AND, AddressingMode::Absolute)),
+        (0x3D, (Opcodes::AND, AddressingMode::AbsoluteX)),
+        (0x39, (Opcodes::AND, AddressingMode::AbsoluteY)),
+        (0x21, (Opcodes::AND, AddressingMode::IndirectX)),
+        (0x31, (Opcodes::AND, AddressingMode::IndirectY)),
+
+        (0x0a, (Opcodes::ASL, AddressingMode::Accumulator)),
+        (0x06, (Opcodes::ASL, AddressingMode::ZeroPage)),
+        (0x16, (Opcodes::ASL, AddressingMode::ZeroPageX)),
+        (0x0e, (Opcodes::ASL, AddressingMode::Absolute)),
+        (0x1e, (Opcodes::ASL, AddressingMode::AbsoluteX)),
+
+        // Branches
+        (0x90, (Opcodes::BCC, AddressingMode::Relative)),
+        (0xb0, (Opcodes::BCS, AddressingMode::Relative)),
+        (0xf0, (Opcodes::BEQ, AddressingMode::Relative)),
+        (0x30, (Opcodes::BMI, AddressingMode::Relative)),
+        (0xd0, (Opcodes::BNE, AddressingMode::Relative)),
+        (0x10, (Opcodes::BPL, AddressingMode::Relative)),
+        (0x50, (Opcodes::BVC, AddressingMode::Relative)),
+        (0x70, (Opcodes::BVS, AddressingMode::Relative)),
+
+        (0x24, (Opcodes::BIT, AddressingMode::ZeroPage)),
+        (0x2c, (Opcodes::BIT, AddressingMode::Absolute)),
+
+        (0x00, (Opcodes::BRK, AddressingMode::Implied)),
+
+        // Clears
+        (0x18, (Opcodes::CLC, AddressingMode::Implied)),
+        (0xd8, (Opcodes::CLD, AddressingMode::Implied)),
+        (0x58, (Opcodes::CLI, AddressingMode::Implied)),
+        (0xb8, (Opcodes::CLV, AddressingMode::Implied)),
+
+        (0xc9, (Opcodes::CMP, AddressingMode::Immediate)),
+        (0xc5, (Opcodes::CMP, AddressingMode::ZeroPage)),
+        (0xd5, (Opcodes::CMP, AddressingMode::ZeroPageX)),
+        (0xcd, (Opcodes::CMP, AddressingMode::Absolute)),
+        (0xdd, (Opcodes::CMP, AddressingMode::AbsoluteX)),
+        (0xd9, (Opcodes::CMP, AddressingMode::AbsoluteY)),
+        (0xc1, (Opcodes::CMP, AddressingMode::IndirectX)),
+        (0xd1, (Opcodes::CMP, AddressingMode::IndirectY)),
+
+        (0xe0, (Opcodes::CPX, AddressingMode::Immediate)),
+        (0xe4, (Opcodes::CPX, AddressingMode::ZeroPage)),
+        (0xec, (Opcodes::CPX, AddressingMode::Absolute)),
+
+        (0xc0, (Opcodes::CPY, AddressingMode::Immediate)),
+        (0xc4, (Opcodes::CPY, AddressingMode::ZeroPage)),
+        (0xcc, (Opcodes::CPY, AddressingMode::Absolute)),
+
+        (0xc6, (Opcodes::DEC, AddressingMode::ZeroPage)),
+        (0xd6, (Opcodes::DEC, AddressingMode::ZeroPageX)),
+        (0xce, (Opcodes::DEC, AddressingMode::Absolute)),
+        (0xde, (Opcodes::DEC, AddressingMode::AbsoluteX)),
+
+        (0xca, (Opcodes::DEX, AddressingMode::Implied)),
+        (0x88, (Opcodes::DEY, AddressingMode::Implied)),
+
+        (0x49, (Opcodes::EOR, AddressingMode::Immediate)),
+        (0x45, (Opcodes::EOR, AddressingMode::ZeroPage)),
+        (0x55, (Opcodes::EOR, AddressingMode::ZeroPageX)),
+        (0x4d, (Opcodes::EOR, AddressingMode::Absolute)),
+        (0x5d, (Opcodes::EOR, AddressingMode::AbsoluteX)),
+        (0x59, (Opcodes::EOR, AddressingMode::AbsoluteY)),
+        (0x41, (Opcodes::EOR, AddressingMode::IndirectX)),
+        (0x51, (Opcodes::EOR, AddressingMode::IndirectY)),
+
+        // Increments
+        (0xe6, (Opcodes::INC, AddressingMode::ZeroPage)),
+        (0xf6, (Opcodes::INC, AddressingMode::ZeroPageX)),
+        (0xee, (Opcodes::INC, AddressingMode::Absolute)),
+        (0xfe, (Opcodes::INC, AddressingMode::AbsoluteX)),
+        (0xe8, (Opcodes::INX, AddressingMode::Implied)),
+        (0xc8, (Opcodes::INY, AddressingMode::Implied)),
+
+        // Jumps
+        (0x4c, (Opcodes::JMP, AddressingMode::Absolute)),
+        (0x6c, (Opcodes::JMP, AddressingMode::Indirect)),
+        (0x20, (Opcodes::JSR, AddressingMode::Absolute)),
+
+        (0xA9, (Opcodes::LDA, AddressingMode::Immediate)),
+        (0xA5, (Opcodes::LDA, AddressingMode::ZeroPage)),
+        (0xB5, (Opcodes::LDA, AddressingMode::ZeroPageX)),
+        (0xAD, (Opcodes::LDA, AddressingMode::Absolute)),
+        (0xBD, (Opcodes::LDA, AddressingMode::AbsoluteX)),
+        (0xB9, (Opcodes::LDA, AddressingMode::AbsoluteY)),
+        (0xA1, (Opcodes::LDA, AddressingMode::IndirectX)),
+        (0xB1, (Opcodes::LDA, AddressingMode::IndirectY)),
+
+        (0xA2, (Opcodes::LDX, AddressingMode::Immediate)),
+        (0xA6, (Opcodes::LDX, AddressingMode::ZeroPage)),
+        (0xB6, (Opcodes::LDX, AddressingMode::ZeroPageY)),
+        (0xAE, (Opcodes::LDX, AddressingMode::Absolute)),
+        (0xBE, (Opcodes::LDX, AddressingMode::AbsoluteY)),
+
+        (0xA0, (Opcodes::LDY, AddressingMode::Immediate)),
+        (0xA4, (Opcodes::LDY, AddressingMode::ZeroPage)),
+        (0xB4, (Opcodes::LDY, AddressingMode::ZeroPageX)),
+        (0xAC, (Opcodes::LDY, AddressingMode::Absolute)),
+        (0xBC, (Opcodes::LDY, AddressingMode::AbsoluteX)),
+
+        (0x4a, (Opcodes::LSR, AddressingMode::Accumulator)),
+        (0x46, (Opcodes::LSR, AddressingMode::ZeroPage)),
+        (0x56, (Opcodes::LSR, AddressingMode::ZeroPageX)),
+        (0x4e, (Opcodes::LSR, AddressingMode::Absolute)),
+        (0x5e, (Opcodes::LSR, AddressingMode::AbsoluteX)),
+
+        (0xea, (Opcodes::NOP, AddressingMode::Implied)),
+
+        (0x09, (Opcodes::ORA, AddressingMode::Immediate)),
+        (0x05, (Opcodes::ORA, AddressingMode::ZeroPage)),
+        (0x15, (Opcodes::ORA, AddressingMode::ZeroPageX)),
+        (0x0d, (Opcodes::ORA, AddressingMode::Absolute)),
+        (0x1d, (Opcodes::ORA, AddressingMode::AbsoluteX)),
+        (0x19, (Opcodes::ORA, AddressingMode::AbsoluteY)),
+        (0x01, (Opcodes::ORA, AddressingMode::IndirectX)),
+        (0x11, (Opcodes::ORA, AddressingMode::IndirectY)),
+
+        // Stacks
+        (0x48, (Opcodes::PHA, AddressingMode::Implied)),
+        (0x08, (Opcodes::PHP, AddressingMode::Implied)),
+        (0x68, (Opcodes::PLA, AddressingMode::Implied)),
+        (0x28, (Opcodes::PLP, AddressingMode::Implied)),
+
+        (0x2a, (Opcodes::ROL, AddressingMode::Accumulator)),
+        (0x26, (Opcodes::ROL, AddressingMode::ZeroPage)),
+        (0x36, (Opcodes::ROL, AddressingMode::ZeroPageX)),
+        (0x2e, (Opcodes::ROL, AddressingMode::Absolute)),
+        (0x3e, (Opcodes::ROL, AddressingMode::AbsoluteX)),
+
+        (0x6a, (Opcodes::ROR, AddressingMode::Accumulator)),
+        (0x66, (Opcodes::ROR, AddressingMode::ZeroPage)),
+        (0x76, (Opcodes::ROR, AddressingMode::ZeroPageX)),
+        (0x6e, (Opcodes::ROR, AddressingMode::Absolute)),
+        (0x7e, (Opcodes::ROR, AddressingMode::AbsoluteX)),
+
+        (0x60, (Opcodes::RTS, AddressingMode::Implied)),
+        (0x40, (Opcodes::RTI, AddressingMode::Implied)),
+
+        (0xe9, (Opcodes::SBC, AddressingMode::Immediate)),
+        (0xe5, (Opcodes::SBC, AddressingMode::ZeroPage)),
+        (0xf5, (Opcodes::SBC, AddressingMode::ZeroPageX)),
+        (0xed, (Opcodes::SBC, AddressingMode::Absolute)),
+        (0xfd, (Opcodes::SBC, AddressingMode::AbsoluteX)),
+        (0xf9, (Opcodes::SBC, AddressingMode::AbsoluteY)),
+        (0xe1, (Opcodes::SBC, AddressingMode::IndirectX)),
+        (0xf1, (Opcodes::SBC, AddressingMode::IndirectY)),
+
+        (0x38, (Opcodes::SEC, AddressingMode::Implied)),
+
+        (0xf8, (Opcodes::SED, AddressingMode::Implied)),
+
+        (0x78, (Opcodes::SEI, AddressingMode::Implied)),
+
+        (0x85, (Opcodes::STA, AddressingMode::ZeroPage)),
+        (0x95, (Opcodes::STA, AddressingMode::ZeroPageX)),
+        (0x8D, (Opcodes::STA, AddressingMode::Absolute)),
+        (0x9D, (Opcodes::STA, AddressingMode::AbsoluteX)),
+        (0x99, (Opcodes::STA, AddressingMode::AbsoluteY)),
+        (0x81, (Opcodes::STA, AddressingMode::IndirectX)),
+        (0x91, (Opcodes::STA, AddressingMode::IndirectY)),
+
+        (0x86, (Opcodes::STX, AddressingMode::ZeroPage)),
+        (0x96, (Opcodes::STX, AddressingMode::ZeroPageY)),
+        (0x8e, (Opcodes::STX, AddressingMode::Absolute)),
+        
+        (0x84, (Opcodes::STY, AddressingMode::ZeroPage)),
+        (0x94, (Opcodes::STY, AddressingMode::ZeroPageX)),
+        (0x8c, (Opcodes::STY, AddressingMode::Absolute)),
+        
+        (0xaa, (Opcodes::TAX, AddressingMode::Implied)),
+        (0xa8, (Opcodes::TAY, AddressingMode::Implied)),
+        (0xba, (Opcodes::TSX, AddressingMode::Implied)),
+        (0x8a, (Opcodes::TXA, AddressingMode::Implied)),
+        (0x9a, (Opcodes::TXS, AddressingMode::Implied)),
+        (0x98, (Opcodes::TYA, AddressingMode::Implied)),
+        
+    ]);
+
+    pub static ref MODE2BYTES: HashMap<AddressingMode, u16> = HashMap::from([
+        (AddressingMode::Accumulator, 0),
+        (AddressingMode::Immediate, 1),
+        (AddressingMode::ZeroPage, 1),
+        (AddressingMode::ZeroPageX, 1),
+        (AddressingMode::ZeroPageY, 1),
+        (AddressingMode::Absolute, 2),
+        (AddressingMode::AbsoluteX, 2),
+        (AddressingMode::AbsoluteY, 2),
+        (AddressingMode::Indirect, 2),
+        (AddressingMode::IndirectX, 1),
+        (AddressingMode::IndirectY, 1),
+        (AddressingMode::Relative, 1),
+        (AddressingMode::Implied, 0),
+    ]);
+}
