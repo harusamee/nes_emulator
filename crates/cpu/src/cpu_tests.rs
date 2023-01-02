@@ -1,6 +1,7 @@
+
 #[cfg(test)]
 pub mod tests {
-    use crate::Cpu;
+    use crate::cpu::Cpu;
     #[test]
     fn test_0xa9_lda_immidiate_load_data() {
         let mut cpu = Cpu::new();
@@ -32,8 +33,8 @@ pub mod tests {
         cpu.load_and_run(vec![0xa9, 0x01, 0x85, 0x00, 0xa5, 0x00, 0x85, 0x01]);
 
         assert_eq!(cpu.a, 1);
-        assert_eq!(cpu.bus.read8(0), 1);
-        assert_eq!(cpu.bus.read8(1), 1);
+        assert_eq!(cpu.ram[0], 1);
+        assert_eq!(cpu.ram[1], 1);
     }
 
     #[test]
@@ -128,9 +129,9 @@ pub mod tests {
     #[test]
     fn test_jsr_rts() {
         let mut cpu = Cpu::new();
-        cpu.load_and_run(vec![0x20, 0x06, 0x06, 0xa9, 0x80, 0x00, 0xa2, 0x40, 0x60]);
+        cpu.load_and_run(vec![0x20, 0x06, 0x80, 0xa9, 0x80, 0x00, 0xa2, 0x40, 0x60]);
 
-        assert_eq!(cpu.pc, 0x0606);
+        assert_eq!(cpu.pc, 0x8006);
         assert_eq!(cpu.a, 0x80);
         assert_eq!(cpu.x, 0x40);
         assert!(!cpu.f.c);

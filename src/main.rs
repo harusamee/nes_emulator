@@ -49,25 +49,25 @@ fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) {
                 keycode: Some(Keycode::W),
                 ..
             } => {
-                cpu.write8(0xff, 0x77);
+                cpu.bus.write8(0xff, 0x77);
             }
             Event::KeyDown {
                 keycode: Some(Keycode::S),
                 ..
             } => {
-                cpu.write8(0xff, 0x73);
+                cpu.bus.write8(0xff, 0x73);
             }
             Event::KeyDown {
                 keycode: Some(Keycode::A),
                 ..
             } => {
-                cpu.write8(0xff, 0x61);
+                cpu.bus.write8(0xff, 0x61);
             }
             Event::KeyDown {
                 keycode: Some(Keycode::D),
                 ..
             } => {
-                cpu.write8(0xff, 0x64);
+                cpu.bus.write8(0xff, 0x64);
             }
             _ => { /* do nothing */ }
         }
@@ -92,7 +92,7 @@ fn read_screen_state(cpu: &Cpu, frame: &mut [u8; 32 * 3 * 32]) -> bool {
     let mut frame_idx = 0;
     let mut update = false;
     for i in 0x0200..0x600 {
-        let color_idx = cpu.read8(i as u16);
+        let color_idx = cpu.bus.read8(i as u16);
         let (b1, b2, b3) = color(color_idx).rgb();
         if frame[frame_idx] != b1 || frame[frame_idx + 1] != b2 || frame[frame_idx + 2] != b3 {
             frame[frame_idx] = b1;
@@ -129,7 +129,7 @@ fn main() {
     cpu.load_program(GAME_CODE.to_vec(), 0x600);
     cpu.run_with_callback(move |cpu| {
         let rn = rng.gen_range(1, 16);
-        cpu.write8(0xfe, rn);
+        cpu.bus.write8(0xfe, rn);
         //cpu.print_info();
         handle_user_input(cpu, &mut event_pump);
 

@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 
 cpu = { path = "crates/cpu" }
+bus = { path = "crates/bus" }
 
 lazy_static = "*"
 bitflags = "*"
@@ -18,4 +19,5 @@ rand = "=0.7.3"
 
 members = [
     "crates/cpu",
+    "crates/bus",
 ]
