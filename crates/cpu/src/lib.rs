@@ -52,7 +52,10 @@ impl Cpu {
 
     pub fn trace(&mut self) -> String {
         let opcode_u8 = self.bus.read8(self.pc);
-        let (opcode, mode) = &OPCODES[&opcode_u8];
+        if !OPCODES.contains_key(&opcode_u8) {
+            println!("Unknown opcode {:X}", opcode_u8);
+        }
+        let (opcode, _, mode, is_official) = &OPCODES[&opcode_u8];
 
         let status: u8 = u8::from(self.f.n) << 7
             | u8::from(self.f.v) << 6
@@ -70,15 +73,19 @@ impl Cpu {
 
         self.pc += 1;
         let operands = match mode {
-            AddressingMode::Accumulator => String::from(""),
+            AddressingMode::Accumulator => String::from("A"),
             AddressingMode::Immediate => format!("#${:02X}", self.bus.read8(self.pc)),
-            AddressingMode::ZeroPage => format!("${:02X}", self.bus.read8(self.pc)),
+            AddressingMode::ZeroPage => {
+                let address = self.get_address(mode);
+                let data = self.bus.read8(address);
+                format!("${:02X} = {:02X}", address, data)
+            },
             AddressingMode::ZeroPageX => {
                 let address = self.get_address(mode);
                 let data = self.bus.read8(address);
                 format!(
                     "${:02X},X @ {:02X} = {:02X}",
-                    self.bus.read8(self.pc + 1),
+                    self.bus.read8(self.pc),
                     address as u8,
                     data
                 )
@@ -129,9 +136,9 @@ impl Cpu {
                 )
             },
             AddressingMode::Indirect => {
-                let address = self.get_address(mode);
-                let data = self.bus.read16(address);
-                format!("(${:04X}) = {:04X}", address, data)
+                let address = self.bus.read16(self.pc);
+                let deref = self.get_address(mode);
+                format!("(${:04X}) = {:04X}", address, deref)
             },
             AddressingMode::IndirectX => {
                 let operand_address = self.bus.read8(self.pc);
@@ -162,15 +169,27 @@ impl Cpu {
             },
             AddressingMode::Relative => {
                 let address = self.get_address(mode);
-                let pc_plus_address = self.pc.wrapping_add(address as u16).wrapping_sub(2);
-                format!("${:04X}", pc_plus_address)
+                let data = self.bus.read8(address);
+                let mut pc_plus_data = self.pc;
+                if data & 0b1000_0000 > 0 {
+                    pc_plus_data = pc_plus_data.wrapping_sub(!data as u16);
+                } else {
+                    pc_plus_data = pc_plus_data.wrapping_add(data as u16).wrapping_add(1);
+                }
+                format!("${:04X}", pc_plus_data)
             },
             AddressingMode::Implied => String::from(""),
         };
         self.pc -= 1;
 
+
+        let opcode = match is_official {
+            true => format!(" {:?}", opcode),
+            false => format!("*{:?}", opcode)
+        };
+
         format!(
-            "{:04X}  {:8}  {:?} {:27} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            "{:04X}  {:8} {} {:27} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
             self.pc, mem_content, opcode, operands, self.a, self.x, self.y, status, self.sp
         )
     }
@@ -227,6 +246,8 @@ impl Cpu {
         let stack_address = (self.sp as u16) + 0x100;
         self.bus.write8(stack_address, data);
         self.sp = self.sp.wrapping_sub(1);
+
+        eprintln!("{:04X} Pushed data {:02X} to {:04X}", self.pc, data, stack_address);
     }
 
     #[must_use]
@@ -253,14 +274,13 @@ impl Cpu {
         data
     }
 
-    fn adc_impl(&mut self, data: u8) {
-        // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-        let c6 = (self.a & data) & 0b0100_0000 > 0;
-        let c7 = (self.a & data) & 0b1000_0000 > 0;
-        self.f.v = c6 ^ c7;
+    fn sbc_impl(&mut self, data: u8) {
         let (data_plus_carry, overflow1) = data.overflowing_add(u8::from(self.f.c));
         let (result, overflow2) = self.a.overflowing_add(data_plus_carry);
-        //println!("{:X} + {:X} + {:X} = {:?}", self.a, data, u8::from(self.f.c), (result, overflow1, overflow2));
+
+        // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+        self.f.v = (self.a ^ !data) & (self.a ^ result) & 0x80 > 0;
+
         self.a = result;
         self.f.c = overflow1 || overflow2;
         self.update_nz(self.a);
@@ -269,21 +289,30 @@ impl Cpu {
     fn adc(&mut self, mode: &AddressingMode) {
         let address = self.get_address(mode);
         let data = self.bus.read8(address);
-        self.adc_impl(data);
+
+        let (data_plus_carry, overflow1) = data.overflowing_add(u8::from(self.f.c));
+        let (result, overflow2) = self.a.overflowing_add(data_plus_carry);
+
+        // http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+        self.f.v = !(self.a ^ data) & (self.a ^ result) & 0x80 > 0;
+
+        self.a = result;
+        self.f.c = overflow1 || overflow2;
+        self.update_nz(self.a);
     }
 
     fn sbc(&mut self, mode: &AddressingMode) {
         let address = self.get_address(mode);
         let data = !self.bus.read8(address);
-        self.adc_impl(data);
+        self.sbc_impl(data);
     }
 
     fn plp(&mut self) {
         let data = self.pop8();
         self.f.n = data & 0b1000_0000 > 0;
         self.f.v = data & 0b0100_0000 > 0;
-        self.f.x = data & 0b0010_0000 > 0;
-        self.f.b = data & 0b0001_0000 > 0;
+        self.f.x = true;
+        // self.f.b = data & 0b0001_0000 > 0;
         self.f.d = data & 0b0000_1000 > 0;
         self.f.i = data & 0b0000_0100 > 0;
         self.f.z = data & 0b0000_0010 > 0;
@@ -318,7 +347,7 @@ impl Cpu {
             if !OPCODES.contains_key(&opcode_u8) {
                 println!("Unknown opcode {:X}", opcode_u8);
             }
-            let (opcode, mode) = &OPCODES[&opcode_u8];
+            let (opcode, _, mode, _) = &OPCODES[&opcode_u8];
             // Consume one byte
             self.pc += 1;
 
@@ -407,8 +436,8 @@ impl Cpu {
                 Opcodes::EOR => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
-                    let result = self.a ^ data;
-                    self.update_nz(result);
+                    self.a = self.a ^ data;
+                    self.update_nz(self.a);
                 }
                 Opcodes::INC => {
                     let address = self.get_address(mode);
@@ -460,6 +489,7 @@ impl Cpu {
                         let data = self.bus.read8(address);
                         self.f.c = data & 1 == 1;
                         let result = data >> 1;
+                        self.bus.write8(address, result);
                         self.update_nz(result);
                     }
                 }
@@ -467,15 +497,15 @@ impl Cpu {
                 Opcodes::ORA => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
-                    let result = self.a | data;
-                    self.update_nz(result);
+                    self.a = self.a | data;
+                    self.update_nz(self.a);
                 }
                 Opcodes::PHA => self.push8(self.a),
                 Opcodes::PHP => {
                     let data = u8::from(self.f.n) << 7
                         | u8::from(self.f.v) << 6
                         | u8::from(self.f.x) << 5
-                        | u8::from(self.f.b) << 4
+                        | u8::from(true) << 4 // Always pushes 1 as the B flag
                         | u8::from(self.f.d) << 3
                         | u8::from(self.f.i) << 2
                         | u8::from(self.f.z) << 1
@@ -488,17 +518,38 @@ impl Cpu {
                 }
                 Opcodes::PLP => self.plp(),
                 Opcodes::ROL => {
-                    self.f.c = self.a & 0b1000_0000 > 0;
-                    self.a = self.a.rotate_left(1);
-                    self.update_nz(self.a);
+                    if mode == &AddressingMode::Accumulator {
+                        let result = self.a << 1 | u8::from(self.f.c);
+                        self.f.c = self.a & 0b1000_0000 > 0;
+                        self.a = result;
+                        self.update_nz(self.a);
+                    } else {
+                        let address = self.get_address(mode);
+                        let data = self.bus.read8(address);
+                        let result = data << 1 | u8::from(self.f.c);
+                        self.f.c = data & 0b1000_0000 > 0;
+                        self.bus.write8(address, result);
+                        self.update_nz(result);
+                    }
                 }
                 Opcodes::ROR => {
-                    self.f.c = self.a & 0b1000_0000 > 0;
-                    self.a = self.a.rotate_right(1);
-                    self.update_nz(self.a);
+                    if mode == &AddressingMode::Accumulator {
+                        let result = self.a >> 1 | u8::from(self.f.c) << 7;
+                        self.f.c = self.a & 0b1 > 0;
+                        self.a = result;
+                        self.update_nz(self.a);    
+                    } else {
+                        let address = self.get_address(mode);
+                        let data = self.bus.read8(address);
+                        let result = data >> 1 | u8::from(self.f.c) << 7;
+                        self.f.c = data & 0b1 > 0;
+                        self.bus.write8(address, result);
+                        self.update_nz(result);
+                    }
                 }
                 Opcodes::RTI => {
                     self.plp();
+                    self.pc = self.pop16();
                 }
                 Opcodes::RTS => {
                     let address = self.pop16();
@@ -543,6 +594,144 @@ impl Cpu {
                     self.a = self.y;
                     self.update_nz(self.a);
                 }
+                //
+                // Unofficial opcodes
+                // 
+                Opcodes::AAC => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    self.a = self.a & data;
+                    self.update_nz(self.a);
+                    self.f.c = self.f.n;
+                },
+                Opcodes::AAX => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    let result = self.x & data;
+                    self.update_nz(result);
+                    self.bus.write8(address, result);
+                },
+                Opcodes::ARR => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    self.a = (self.a & data).rotate_right(1);
+
+                    let bit6 = self.a & 0b0100_0000 > 0;
+                    let bit5 = self.a & 0b0010_0000 > 0;
+                    match (bit6, bit5) {
+                        (true, true) => {
+                            self.f.c = true;
+                            self.f.v = false;
+                        }
+                        (false, false) => {
+                            self.f.c = false;
+                            self.f.v = false;
+                        }
+                        (true, false) => {
+                            self.f.c = true;
+                            self.f.v = true;
+                        }
+                        (false, true) => {
+                            self.f.c = false;
+                            self.f.v = true;
+                        }
+                        _ => {}
+                    };
+                },
+                Opcodes::ASR => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    self.a = (self.a & data).rotate_right(1);
+                    self.f.c = self.a & 0b1000_0000 > 0;
+                    self.update_nz(self.a);
+                },
+                Opcodes::ATX => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    self.a = self.a & data;
+                    self.x = self.a;
+                    self.update_nz(self.x);
+                },
+                Opcodes::AXA => todo!(),
+                Opcodes::AXS => todo!(),
+                Opcodes::DCP => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    let result = data.wrapping_sub(1);
+                    self.f.c = result == 0xff;
+                },
+                Opcodes::DOP => {},
+                Opcodes::ISB => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    let result = data.wrapping_add(1);
+                    self.bus.write8(address, result);
+
+                    self.sbc_impl(!result);
+                },
+                Opcodes::KIL => { return; },
+                Opcodes::LAR => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    let result = self.sp & data;
+                    self.a = result;
+                    self.x = result;
+                    self.sp = result;
+
+                    self.update_nz(self.sp);
+                },
+                Opcodes::LAX => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    self.a = data;
+                    self.x = data;
+                    self.update_nz(self.x);
+                },
+                Opcodes::RLA => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    let result = data.rotate_left(1);
+                    self.f.c = data & 0b1000_0000 > 0;
+                    self.bus.write8(address, result);
+
+                    self.a = self.a & result;
+                    self.update_nz(self.a);
+                },
+                Opcodes::RRA => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    let result = data.rotate_right(1);
+                    self.f.c = data & 0b1 > 0;
+                    self.bus.write8(address, result);
+
+                    self.a = self.a & result;
+                    self.update_nz(self.a);
+                },
+                Opcodes::SLO => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    let result = data << 1;
+                    self.f.c = data & 0b1000_0000 > 0;
+                    self.bus.write8(address, result);
+
+                    self.a = self.a | result;
+                    self.update_nz(self.a);
+                },
+                Opcodes::SRE => {
+                    let address = self.get_address(mode);
+                    let data = self.bus.read8(address);
+                    let result = data >> 1;
+                    self.f.c = data & 0b1000_0000 > 0;
+                    self.bus.write8(address, result);
+
+                    self.a = self.a ^ result;
+                    self.update_nz(self.a);
+                },
+                Opcodes::SXA => todo!(),
+                Opcodes::SYA => todo!(),
+                Opcodes::TOP => {},
+                Opcodes::XAA => todo!(),
+                Opcodes::XAS => todo!(),
             }
 
             // Consume some bytes except jumping
