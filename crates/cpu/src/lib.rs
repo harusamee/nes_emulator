@@ -43,7 +43,7 @@ impl Cpu {
     pub fn print_info(&self) {
         let opcode_u8 = self.bus.read8(self.pc);
         let (opcode, _) = &OPCODES[&opcode_u8];
-        print!("pc: {:02X}({:?},{:02X}) a: {:02X} x: {:02X} y: {:02X} sp: {:02X} rn: {:02X} {:02X}{:02X}{:02X}{:02X} f: ",
+        print!("pc: {:04X}({:?},{:02X}) a: {:02X} x: {:02X} y: {:02X} sp: {:02X} rn: {:02X} {:02X}{:02X}{:02X}{:02X} f: ",
             self.pc, opcode, opcode_u8, self.a, self.x, self.y, self.sp,
             self.bus.read8(0xfe), self.bus.read8(0), self.bus.read8(1), self.bus.read8(2), self.bus.read8(3));
 
@@ -59,13 +59,9 @@ impl Cpu {
     }
 
     fn load_and_run(&mut self, program: Vec<u8>) {
-        self.load_program(program, 0x600);
+        self.bus.write_range(0x600, program);
+        self.pc = 0x600 as u16;
         self.run();
-    }
-
-    pub fn load_program(&mut self, program: Vec<u8>, from: u16) {
-        self.bus.write_range(from, program);
-        self.pc = from as u16;
     }
 
     fn update_nz(&mut self, result: u8) {
@@ -187,6 +183,10 @@ impl Cpu {
 
     fn run(&mut self) {
         self.run_with_callback(|_| {});
+    }
+
+    pub fn set_pc(&mut self, pc: u16) {
+        self.pc = pc;
     }
 
     pub fn run_with_callback<F>(&mut self, mut callback: F)

@@ -1,33 +1,56 @@
+use cartridge::Cartridge;
+
 const RAM: u16 = 0x0000;
 const RAM_MIRRORS_END: u16 = 0x1FFF;
 const RAM_EFFECTIVE_BITS: u16 = 0b0111_1111_1111;
 const PPU_REGISTERS: u16 = 0x2000;
 const PPU_REGISTERS_MIRRORS_END: u16 = 0x3FFF;
 const PPU_REGISTERS_EFFECTIVE_BITS: u16 = 0b0010_0000_0000_0111;
+pub const PRG_ROM: u16 = 0x8000;
+const PRG_ROM_END: u16 = 0xffff;
+
+
 
 pub struct Bus {
     work_ram: [u8; 0x800],
-    prg_rom: [u8; 0x4000]
+    cartridge: Cartridge
 }
 
 impl Bus {
     pub fn new() -> Self {
         Bus {
             work_ram: [0; 0x800],
-            prg_rom: [0; 0x4000]
+            cartridge: Cartridge::new(),
+        }
+    }
+
+    pub fn load_cartridge(&mut self, raw: &Vec<u8>) {
+        self.cartridge = match Cartridge::load(raw) {
+            Ok(cartridge) => cartridge,
+            Err(message) => panic!("{}", message),
         }
     }
 
     #[must_use]
-    pub fn read8(&self, address: u16) -> u8 {
-        match address {
-            RAM..=RAM_MIRRORS_END => {
+    pub fn read8(&self, mut address: u16) -> u8 {
+        match (address, self.cartridge.loaded) {
+            (RAM..=RAM_MIRRORS_END, _) => {
                 let address = address & RAM_EFFECTIVE_BITS;
                 self.work_ram[address as usize]
             }
-            PPU_REGISTERS..=PPU_REGISTERS_MIRRORS_END => {
+            (PPU_REGISTERS..=PPU_REGISTERS_MIRRORS_END, _) => {
                 let _address = address & PPU_REGISTERS_EFFECTIVE_BITS;
                 todo!();
+            }
+            (PRG_ROM..=PRG_ROM_END, true) => {
+                address -= 0x8000;
+                if self.cartridge.prg_rom.len() == 0x4000 && address >= 0x4000 {
+                    address -= 0x4000;
+                }
+                self.cartridge.prg_rom[address as usize]
+            }
+            (PRG_ROM..=PRG_ROM_END, false) => {
+                panic!("Invalid read of {:X}", address);
             }
             _ => 0u8 // Returns zero if out of range
         }
@@ -40,8 +63,11 @@ impl Bus {
                 self.work_ram[address as usize] = data;
             }
             PPU_REGISTERS..=PPU_REGISTERS_MIRRORS_END => {
-                let address = address & PPU_REGISTERS_EFFECTIVE_BITS;
-                self.prg_rom[address as usize] = data;
+                let _address = address & PPU_REGISTERS_EFFECTIVE_BITS;
+                todo!();
+            }
+            PRG_ROM..=PRG_ROM_END => {
+                panic!("Invalid write of {:X}", address);
             }
             _ => {} // No-op if out of range
         }
