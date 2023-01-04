@@ -29,33 +29,150 @@ pub struct Cpu {
     x: u8,
     y: u8,
     f: Flags,
-    pub bus: Bus
+    pub bus: Bus,
 }
 
 impl Cpu {
     pub fn new() -> Self {
         Cpu {
-            sp: 0xff,
+            sp: 0xfd,
+            f: Flags {
+                n: false,
+                v: false,
+                x: true,
+                b: false,
+                d: false,
+                i: true,
+                z: false,
+                c: false,
+            },
             ..Default::default()
         }
     }
 
-    pub fn print_info(&self) {
+    pub fn trace(&mut self) -> String {
         let opcode_u8 = self.bus.read8(self.pc);
-        let (opcode, _) = &OPCODES[&opcode_u8];
-        print!("pc: {:04X}({:?},{:02X}) a: {:02X} x: {:02X} y: {:02X} sp: {:02X} rn: {:02X} {:02X}{:02X}{:02X}{:02X} f: ",
-            self.pc, opcode, opcode_u8, self.a, self.x, self.y, self.sp,
-            self.bus.read8(0xfe), self.bus.read8(0), self.bus.read8(1), self.bus.read8(2), self.bus.read8(3));
+        let (opcode, mode) = &OPCODES[&opcode_u8];
 
-        if self.f.n { print!("n"); }
-        if self.f.v { print!("v"); }
-        if self.f.b { print!("b"); }
-        if self.f.d { print!("d"); }
-        if self.f.i { print!("i"); }
-        if self.f.z { print!("z"); }
-        if self.f.c { print!("c"); }
+        let status: u8 = u8::from(self.f.n) << 7
+            | u8::from(self.f.v) << 6
+            | u8::from(self.f.x) << 5
+            | u8::from(self.f.b) << 4
+            | u8::from(self.f.d) << 3
+            | u8::from(self.f.i) << 2
+            | u8::from(self.f.z) << 1
+            | u8::from(self.f.c) << 0;
 
-        println!("");
+        let mem_content = (0..(1 + MODE2BYTES[mode]))
+            .map(|i| format!("{:02X}", self.bus.read8(self.pc + i)))
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        self.pc += 1;
+        let operands = match mode {
+            AddressingMode::Accumulator => String::from(""),
+            AddressingMode::Immediate => format!("#${:02X}", self.bus.read8(self.pc)),
+            AddressingMode::ZeroPage => format!("${:02X}", self.bus.read8(self.pc)),
+            AddressingMode::ZeroPageX => {
+                let address = self.get_address(mode);
+                let data = self.bus.read8(address);
+                format!(
+                    "${:02X},X @ {:02X} = {:02X}",
+                    self.bus.read8(self.pc + 1),
+                    address as u8,
+                    data
+                )
+            }
+            AddressingMode::ZeroPageY => {
+                let address = self.get_address(mode);
+                let data = self.bus.read8(address);
+                format!(
+                    "${:02X},Y @ {:02X} = {:02X}",
+                    self.bus.read8(self.pc),
+                    address as u8,
+                    data
+                )
+            }
+            AddressingMode::Absolute => {
+                let address = self.get_address(mode);
+                match opcode {
+                    Opcodes::JSR | Opcodes::JMP => {
+                        format!("${:04X}", address)
+                    }
+                    _ => {
+                        format!(
+                            "${:04X} = {:02X}",
+                            address,
+                            self.bus.read8(address),
+                        )
+                    }
+                }
+            }
+            AddressingMode::AbsoluteX => {
+                let operand_address = self.bus.read16(self.pc);
+                let address = self.get_address(mode);
+                format!(
+                    "${:04X},X @ {:04X} = {:02X}",
+                    operand_address,
+                    address,
+                    self.bus.read8(address),
+                )
+            },
+            AddressingMode::AbsoluteY => {
+                let operand_address = self.bus.read16(self.pc);
+                let address = self.get_address(mode);
+                format!(
+                    "${:04X},Y @ {:04X} = {:02X}",
+                    operand_address,
+                    address,
+                    self.bus.read8(address),
+                )
+            },
+            AddressingMode::Indirect => {
+                let address = self.get_address(mode);
+                let data = self.bus.read16(address);
+                format!("(${:04X}) = {:04X}", address, data)
+            },
+            AddressingMode::IndirectX => {
+                let operand_address = self.bus.read8(self.pc);
+                let operand_plus_x = operand_address.wrapping_add(self.x);
+                let address = self.get_address(mode);
+                format!(
+                    "(${:02X},X) @ {:02X} = {:04X} = {:02X}",
+                    operand_address,
+                    operand_plus_x,
+                    address,
+                    self.bus.read8(address),
+                )
+            }
+            AddressingMode::IndirectY => {
+                let operand_address = self.bus.read8(self.pc);
+                let lo = self.bus.read8(operand_address as u16) as u16;
+                let hi = self.bus.read8(operand_address.wrapping_add(1) as u16) as u16;
+                let operand_address_deref = hi << 8 | lo;
+
+                let address = self.get_address(mode);
+                format!(
+                    "(${:02X}),Y = {:04X} @ {:04X} = {:02X}",
+                    operand_address,
+                    operand_address_deref,
+                    address,
+                    self.bus.read8(address),
+                )
+            },
+            AddressingMode::Relative => {
+                let address = self.get_address(mode);
+                let pc_plus_address = self.pc.wrapping_add(address as u16).wrapping_sub(2);
+                format!("${:04X}", pc_plus_address)
+            },
+            AddressingMode::Implied => String::from(""),
+        };
+        self.pc -= 1;
+
+        format!(
+            "{:04X}  {:8}  {:?} {:27} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            self.pc, mem_content, opcode, operands, self.a, self.x, self.y, status, self.sp
+        )
     }
 
     fn load_and_run(&mut self, program: Vec<u8>) {
@@ -87,19 +204,19 @@ impl Cpu {
                 } else {
                     self.bus.read16(ptr)
                 }
-            },
+            }
             AddressingMode::IndirectX => {
                 let ptr = self.bus.read8(self.pc).wrapping_add(self.x);
                 let lo = self.bus.read8(ptr as u16) as u16;
                 let hi = self.bus.read8(ptr.wrapping_add(1) as u16) as u16;
                 hi << 8 | lo
-            },
+            }
             AddressingMode::IndirectY => {
                 let ptr = self.bus.read8(self.pc);
                 let lo = self.bus.read8(ptr as u16) as u16;
                 let hi = self.bus.read8(ptr.wrapping_add(1) as u16) as u16;
                 (hi << 8 | lo).wrapping_add(self.y as u16)
-            },
+            }
             AddressingMode::Relative => self.pc,
             AddressingMode::Implied => todo!(),
             AddressingMode::Accumulator => todo!(),
@@ -190,7 +307,9 @@ impl Cpu {
     }
 
     pub fn run_with_callback<F>(&mut self, mut callback: F)
-    where F: FnMut(&mut Cpu) {
+    where
+        F: FnMut(&mut Cpu),
+    {
         loop {
             callback(self);
 
@@ -212,7 +331,7 @@ impl Cpu {
                     let data = self.bus.read8(address);
                     self.a = self.a & data;
                     self.update_nz(self.a);
-                },
+                }
                 Opcodes::ASL => {
                     if mode == &AddressingMode::Accumulator {
                         // Sets carry flag if bit7 of old value enabled
@@ -228,7 +347,7 @@ impl Cpu {
                         self.bus.write8(address, result);
                         self.update_nz(result);
                     }
-                },
+                }
                 Opcodes::BCC => self.branch(mode, !self.f.c),
                 Opcodes::BCS => self.branch(mode, self.f.c),
                 Opcodes::BEQ => self.branch(mode, self.f.z),
@@ -244,7 +363,7 @@ impl Cpu {
                     self.f.z = result == 0;
                     self.f.v = data & 0b0100_0000 > 0;
                     self.f.n = data & 0b1000_0000 > 0;
-                },
+                }
                 Opcodes::CLC => self.f.c = false,
                 Opcodes::CLD => self.f.d = false,
                 Opcodes::CLI => self.f.i = false,
@@ -255,49 +374,49 @@ impl Cpu {
                     let result = self.a.wrapping_sub(data);
                     self.update_nz(result);
                     self.f.c = self.a >= data;
-                },
+                }
                 Opcodes::CPX => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
                     let result = self.x.wrapping_sub(data);
                     self.update_nz(result);
                     self.f.c = self.x >= data;
-                },
+                }
                 Opcodes::CPY => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
                     let result = self.y.wrapping_sub(data);
                     self.update_nz(result);
                     self.f.c = self.y >= data;
-                },
+                }
                 Opcodes::DEC => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
                     let result = data.wrapping_sub(1);
                     self.bus.write8(address, result);
                     self.update_nz(result);
-                },
+                }
                 Opcodes::DEX => {
                     self.x = self.x.wrapping_sub(1);
-                    self.update_nz(self.x);                    
-                },
+                    self.update_nz(self.x);
+                }
                 Opcodes::DEY => {
                     self.y = self.y.wrapping_sub(1);
-                    self.update_nz(self.y);                    
-                },
+                    self.update_nz(self.y);
+                }
                 Opcodes::EOR => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
                     let result = self.a ^ data;
                     self.update_nz(result);
-                },
+                }
                 Opcodes::INC => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
                     let result = data.wrapping_add(1);
                     self.update_nz(result);
-                    self.bus.write8(address, result);                    
-                },
+                    self.bus.write8(address, result);
+                }
                 Opcodes::INX => {
                     self.x = self.x.wrapping_add(1);
                     self.update_nz(self.x);
@@ -305,17 +424,17 @@ impl Cpu {
                 Opcodes::INY => {
                     self.y = self.y.wrapping_add(1);
                     self.update_nz(self.y);
-                },
+                }
                 Opcodes::JMP => {
                     let address = self.get_address(mode);
                     self.pc = address;
-                },
+                }
                 Opcodes::JSR => {
                     let address = self.get_address(mode);
                     let stack_data = self.pc + MODE2BYTES[mode] - 1;
                     self.push16(stack_data);
                     self.pc = address;
-                },
+                }
                 Opcodes::LDA => {
                     let address = self.get_address(mode);
                     self.a = self.bus.read8(address);
@@ -343,8 +462,8 @@ impl Cpu {
                         let result = data >> 1;
                         self.update_nz(result);
                     }
-                },
-                Opcodes::NOP => {},
+                }
+                Opcodes::NOP => {}
                 Opcodes::ORA => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
@@ -354,25 +473,25 @@ impl Cpu {
                 Opcodes::PHA => self.push8(self.a),
                 Opcodes::PHP => {
                     let data = u8::from(self.f.n) << 7
-                             | u8::from(self.f.v) << 6
-                             | u8::from(self.f.x) << 5
-                             | u8::from(self.f.b) << 4
-                             | u8::from(self.f.d) << 3
-                             | u8::from(self.f.i) << 2
-                             | u8::from(self.f.z) << 1
-                             | u8::from(self.f.c) << 0;
+                        | u8::from(self.f.v) << 6
+                        | u8::from(self.f.x) << 5
+                        | u8::from(self.f.b) << 4
+                        | u8::from(self.f.d) << 3
+                        | u8::from(self.f.i) << 2
+                        | u8::from(self.f.z) << 1
+                        | u8::from(self.f.c) << 0;
                     self.push8(data);
-                },
+                }
                 Opcodes::PLA => {
                     self.a = self.pop8();
                     self.update_nz(self.a);
-                },
+                }
                 Opcodes::PLP => self.plp(),
                 Opcodes::ROL => {
                     self.f.c = self.a & 0b1000_0000 > 0;
                     self.a = self.a.rotate_left(1);
                     self.update_nz(self.a);
-                },
+                }
                 Opcodes::ROR => {
                     self.f.c = self.a & 0b1000_0000 > 0;
                     self.a = self.a.rotate_right(1);
@@ -396,7 +515,7 @@ impl Cpu {
                 Opcodes::STX => {
                     let address = self.get_address(mode);
                     self.bus.write8(address, self.x);
-                },
+                }
                 Opcodes::STY => {
                     let address = self.get_address(mode);
                     self.bus.write8(address, self.y);
@@ -408,29 +527,29 @@ impl Cpu {
                 Opcodes::TAY => {
                     self.y = self.a;
                     self.update_nz(self.y);
-                },
+                }
                 Opcodes::TSX => {
                     self.x = self.sp;
                     self.update_nz(self.x);
-                },
+                }
                 Opcodes::TXA => {
                     self.a = self.x;
                     self.update_nz(self.a);
-                },
+                }
                 Opcodes::TXS => {
                     self.sp = self.x;
-                },
+                }
                 Opcodes::TYA => {
                     self.a = self.y;
                     self.update_nz(self.a);
-                },
+                }
             }
 
             // Consume some bytes except jumping
             match opcode {
-                Opcodes::JMP => {},
-                Opcodes::JSR => {},
-                _ => self.pc += MODE2BYTES[mode]
+                Opcodes::JMP => {}
+                Opcodes::JSR => {}
+                _ => self.pc += MODE2BYTES[mode],
             }
         }
     }

@@ -109,7 +109,7 @@ fn main() {
     cpu.run_with_callback(move |cpu| {
         let rn = rng.gen_range(1, 16);
         cpu.bus.write8(0xfe, rn);
-        //cpu.print_info();
+        println!("{}", cpu.trace());
         handle_user_input(cpu, &mut event_pump);
 
         if read_screen_state(cpu, &mut screen_state) {

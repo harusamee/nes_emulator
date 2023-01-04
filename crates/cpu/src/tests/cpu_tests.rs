@@ -203,4 +203,62 @@ pub mod tests {
 
         assert_eq!(cpu.x, 1)
     }
+
+    #[test]
+    fn test_format_trace() {
+        let mut cpu = Cpu::new();
+ 
+        cpu.bus.write8(100, 0xa2);
+        cpu.bus.write8(101, 0x01);
+        cpu.bus.write8(102, 0xca);
+        cpu.bus.write8(103, 0x88);
+        cpu.bus.write8(104, 0x00);
+
+        cpu.pc = 0x64;
+        cpu.a = 1;
+        cpu.x = 2;
+        cpu.y = 3;
+        let mut result: Vec<String> = vec![];
+        cpu.run_with_callback(|cpu| {
+            result.push(cpu.trace());
+        });
+        assert_eq!(
+            "0064  A2 01     LDX #$01                        A:01 X:02 Y:03 P:24 SP:FD",
+            result[0]
+        );
+        assert_eq!(
+            "0066  CA        DEX                             A:01 X:01 Y:03 P:24 SP:FD",
+            result[1]
+        );
+        assert_eq!(
+            "0067  88        DEY                             A:01 X:00 Y:03 P:26 SP:FD",
+            result[2]
+        );
+    }
+
+
+    #[test]
+    fn test_format_mem_access() {
+        let mut cpu = Cpu::new();
+
+        // ORA ($33), Y
+        cpu.bus.write8(100, 0x11);
+        cpu.bus.write8(101, 0x33);
+        //data
+        cpu.bus.write8(0x33, 00);
+        cpu.bus.write8(0x34, 04);
+        //target cell
+        cpu.bus.write8(0x400, 0xAA);
+
+        cpu.pc = 0x64;
+        cpu.y = 0;
+        let mut result: Vec<String> = vec![];
+        cpu.run_with_callback(|cpu| {
+            result.push(cpu.trace());
+        });
+        assert_eq!(
+            "0064  11 33     ORA ($33),Y = 0400 @ 0400 = AA  A:00 X:00 Y:00 P:24 SP:FD",
+            result[0]
+        );
+    }
 }
