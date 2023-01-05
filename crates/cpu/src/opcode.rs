@@ -61,7 +61,7 @@ pub enum Opcodes {
     TYA,
     // Unofficial opcodes
     AAC,
-    AAX,
+    SAX,
     ARR,
     ASR,
     ATX,
@@ -302,10 +302,10 @@ lazy_static! {
         (0x0b, (Opcodes::AAC, 0, AddressingMode::Immediate, false)),
         (0x2b, (Opcodes::AAC, 0, AddressingMode::Immediate, false)),
 
-        (0x87, (Opcodes::AAX, 0, AddressingMode::ZeroPage, false)),
-        (0x97, (Opcodes::AAX, 0, AddressingMode::ZeroPageY, false)),
-        (0x8f, (Opcodes::AAX, 0, AddressingMode::Absolute, false)),
-        (0x83, (Opcodes::AAX, 0, AddressingMode::IndirectX, false)),
+        (0x87, (Opcodes::SAX, 0, AddressingMode::ZeroPage, false)),
+        (0x97, (Opcodes::SAX, 0, AddressingMode::ZeroPageY, false)),
+        (0x8f, (Opcodes::SAX, 0, AddressingMode::Absolute, false)),
+        (0x83, (Opcodes::SAX, 0, AddressingMode::IndirectX, false)),
 
         (0x6b, (Opcodes::ARR, 0, AddressingMode::Immediate, false)),
         (0x4b, (Opcodes::ASR, 0, AddressingMode::Immediate, false)),

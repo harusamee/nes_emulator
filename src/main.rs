@@ -101,7 +101,7 @@ fn main() {
     let mut cpu = Cpu::new();
 
     let args: Vec<String> = std::env::args().collect();
-    let filename = if args.len() >= 2 { &args[1] } else { "snake.nes" };
+    let filename = if args.len() >= 2 { &args[1] } else { "nestest.nes" };
     let raw = std::fs::read(filename).expect("Could not read the file");
 
     cpu.bus.load_cartridge(&raw);

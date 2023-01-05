@@ -246,8 +246,6 @@ impl Cpu {
         let stack_address = (self.sp as u16) + 0x100;
         self.bus.write8(stack_address, data);
         self.sp = self.sp.wrapping_sub(1);
-
-        eprintln!("{:04X} Pushed data {:02X} to {:04X}", self.pc, data, stack_address);
     }
 
     #[must_use]
@@ -286,10 +284,7 @@ impl Cpu {
         self.update_nz(self.a);
     }
 
-    fn adc(&mut self, mode: &AddressingMode) {
-        let address = self.get_address(mode);
-        let data = self.bus.read8(address);
-
+    fn adc_impl(&mut self, data: u8) {
         let (data_plus_carry, overflow1) = data.overflowing_add(u8::from(self.f.c));
         let (result, overflow2) = self.a.overflowing_add(data_plus_carry);
 
@@ -299,6 +294,13 @@ impl Cpu {
         self.a = result;
         self.f.c = overflow1 || overflow2;
         self.update_nz(self.a);
+    }
+
+    fn adc(&mut self, mode: &AddressingMode) {
+        let address = self.get_address(mode);
+        let data = self.bus.read8(address);
+
+        self.adc_impl(data);
     }
 
     fn sbc(&mut self, mode: &AddressingMode) {
@@ -604,11 +606,10 @@ impl Cpu {
                     self.update_nz(self.a);
                     self.f.c = self.f.n;
                 },
-                Opcodes::AAX => {
+                Opcodes::SAX => {
                     let address = self.get_address(mode);
-                    let data = self.bus.read8(address);
-                    let result = self.x & data;
-                    self.update_nz(result);
+                    let result = self.a & self.x;
+                    // self.update_nz(result);
                     self.bus.write8(address, result);
                 },
                 Opcodes::ARR => {
@@ -657,8 +658,14 @@ impl Cpu {
                 Opcodes::DCP => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
+                    // DEC
                     let result = data.wrapping_sub(1);
-                    self.f.c = result == 0xff;
+                    self.bus.write8(address, result);
+                    
+                    // CMP
+                    let (result, overflow) = self.a.overflowing_sub(result);
+                    self.update_nz(result);
+                    self.f.c = !overflow;
                 },
                 Opcodes::DOP => {},
                 Opcodes::ISB => {
@@ -690,7 +697,7 @@ impl Cpu {
                 Opcodes::RLA => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
-                    let result = data.rotate_left(1);
+                    let result = data << 1 | u8::from(self.f.c);
                     self.f.c = data & 0b1000_0000 > 0;
                     self.bus.write8(address, result);
 
@@ -700,12 +707,11 @@ impl Cpu {
                 Opcodes::RRA => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
-                    let result = data.rotate_right(1);
-                    self.f.c = data & 0b1 > 0;
+                    let result = data >> 1 | u8::from(self.f.c) << 7;
                     self.bus.write8(address, result);
+                    self.f.c = data & 0b1 > 0;
 
-                    self.a = self.a & result;
-                    self.update_nz(self.a);
+                    self.adc_impl(result);
                 },
                 Opcodes::SLO => {
                     let address = self.get_address(mode);
@@ -721,7 +727,7 @@ impl Cpu {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
                     let result = data >> 1;
-                    self.f.c = data & 0b1000_0000 > 0;
+                    self.f.c = data & 0b1 > 0;
                     self.bus.write8(address, result);
 
                     self.a = self.a ^ result;
