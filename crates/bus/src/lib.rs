@@ -12,13 +12,12 @@ const PPU_REG_OAM_DATA: u16 = 0x2004;
 const PPU_REG_SCROLL: u16 = 0x2005;
 const PPU_REG_ADDRESS: u16 = 0x2006;
 const PPU_REG_DATA: u16 = 0x2007;
-const PPU_REG_OAM_DMA: u16 = 0x4014;
+pub const PPU_REG_OAM_DMA: u16 = 0x4014;
 const PPU_REGISTERS_MIRRORS: u16 = 0x2008;
 const PPU_REGISTERS_MIRRORS_END: u16 = 0x3FFF;
 
 pub const PRG_ROM: u16 = 0x8000;
 const PRG_ROM_END: u16 = 0xffff;
-
 
 
 pub struct Bus {
@@ -58,12 +57,12 @@ impl Bus {
                 let address = address & RAM_EFFECTIVE_BITS;
                 self.work_ram[address as usize]
             }
-            PPU_REG_CTRL | PPU_REG_MASK | PPU_REG_OAM_ADDRESS | PPU_REG_SCROLL | PPU_REG_OAM_DMA => {
+            PPU_REG_CTRL | PPU_REG_MASK | PPU_REG_OAM_ADDRESS | PPU_REG_SCROLL | PPU_REG_ADDRESS | PPU_REG_OAM_DMA => {
                 0
                 // panic!("Invalid read of {:X}", address);
             }
-            PPU_REG_STATUS => 0,
-            PPU_REG_OAM_DATA => 0,
+            PPU_REG_STATUS => self.ppu.read_stat(),
+            PPU_REG_OAM_DATA => self.ppu.read_oam_data(),
             PPU_REG_DATA => self.ppu.read_data(),
             PRG_ROM..=PRG_ROM_END => {
                 if self.cartridge.loaded {
@@ -96,14 +95,18 @@ impl Bus {
                     self.should_intr_nmi = true;
                 }
             }
-            PPU_REG_MASK => todo!(),
+            PPU_REG_MASK => self.ppu.write_mask(data),
             PPU_REG_STATUS => panic!("Invalid write of {:X}", address),
-            PPU_REG_OAM_ADDRESS => todo!(),
-            PPU_REG_OAM_DATA => todo!(),
-            PPU_REG_SCROLL => todo!(),
+            PPU_REG_OAM_ADDRESS => self.ppu.write_oam_addr(data),
+            PPU_REG_OAM_DATA => self.ppu.write_oam_data(data),
+            PPU_REG_SCROLL => self.ppu.write_scrl(data),
             PPU_REG_ADDRESS => self.ppu.write_addr(data),
             PPU_REG_DATA => self.ppu.write_data(data),
-            PPU_REG_OAM_DMA => todo!(),
+            PPU_REG_OAM_DMA => {
+                let dma_start = ((data as u16) << 8) as usize;
+                let dma_end = dma_start + 0xff;
+                self.ppu.oam_data.copy_from_slice(&self.work_ram[dma_start..=dma_end]);
+            },
             PPU_REGISTERS_MIRRORS..=PPU_REGISTERS_MIRRORS_END => {
                 let address = address & 0b0010_0000_0000_0111;
                 self.write8(address, data);

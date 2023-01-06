@@ -38,9 +38,9 @@ fn set_pixel(fb: &mut Vec<u8>, x: usize, y: usize, p: usize) {
 }
 
 fn render_tile(chr_rom: &Vec<u8>, fb: &mut Vec<u8>, bank: usize, tile_id: usize) {
-    let tile_begin = bank * 0x1000 + tile_id * 16;
-    let tile_end = tile_begin + 15;
-    let tile = &chr_rom[tile_begin..=tile_end];
+    let tile_start = bank * 0x1000 + tile_id * 16;
+    let tile_end = tile_start + 15;
+    let tile = &chr_rom[tile_start..=tile_end];
 
     let offset_x = (tile_id % 28) * 9;
     let offset_y = (tile_id / 28) * 9;

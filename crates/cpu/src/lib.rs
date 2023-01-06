@@ -2,7 +2,7 @@ mod opcode;
 use crate::opcode::*;
 mod trace;
 
-use bus::Bus;
+use bus::{Bus, PPU_REG_OAM_DMA};
 
 #[cfg(test)]
 pub mod tests {
@@ -249,6 +249,7 @@ impl Cpu {
         F: FnMut(&mut Cpu),
     {
         loop {
+            let total_cycles: usize = 0;
             callback(self);
 
             // Read an opcode
@@ -481,6 +482,21 @@ impl Cpu {
                 Opcodes::STA => {
                     let address = self.get_address(mode);
                     self.bus.write8(address, self.a);
+                    if address == PPU_REG_OAM_DMA {
+                        // Suspend 513 + 1 cycles
+                        self.bus.tick(64);
+                        self.bus.tick(64);
+                        self.bus.tick(64);
+                        self.bus.tick(64);
+                        self.bus.tick(64);
+                        self.bus.tick(64);
+                        self.bus.tick(64);
+                        self.bus.tick(64);
+                        cycles += 1;
+                        if total_cycles & 1 > 0 {
+                            cycles += 1;
+                        }
+                    }
                 }
                 Opcodes::STX => {
                     let address = self.get_address(mode);
