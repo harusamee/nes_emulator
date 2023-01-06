@@ -171,7 +171,7 @@ pub mod tests {
         cpu.load_and_run(vec![0xa9, 0x80, 0x48, 0x00, 0xa9, 0x10, 0x68]);
 
         assert_eq!(cpu.a, 0x80);
-        assert_eq!(cpu.sp, 0xfe);
+        assert_eq!(cpu.sp, 0xfc);
         assert!(!cpu.f.c);
         assert!(!cpu.f.z);
         assert!(!cpu.f.v);
@@ -180,7 +180,7 @@ pub mod tests {
         cpu.run();
 
         assert_eq!(cpu.a, 0x80);
-        assert_eq!(cpu.sp, 0xff);
+        assert_eq!(cpu.sp, 0xfd);
         assert!(!cpu.f.c);
         assert!(!cpu.f.z);
         assert!(!cpu.f.v);
