@@ -63,16 +63,17 @@ impl Cpu {
     }
 
     fn get_address(&mut self, mode: &AddressingMode) -> u16 {
+        let operand_address = self.pc + 1;
         match mode {
-            AddressingMode::Immediate => self.pc,
-            AddressingMode::ZeroPage => self.bus.read8(self.pc) as u16,
-            AddressingMode::ZeroPageX => self.bus.read8(self.pc).wrapping_add(self.x) as u16,
-            AddressingMode::ZeroPageY => self.bus.read8(self.pc).wrapping_add(self.y) as u16,
-            AddressingMode::Absolute => self.bus.read16(self.pc),
-            AddressingMode::AbsoluteX => self.bus.read16(self.pc).wrapping_add(self.x as u16),
-            AddressingMode::AbsoluteY => self.bus.read16(self.pc).wrapping_add(self.y as u16),
+            AddressingMode::Immediate => operand_address,
+            AddressingMode::ZeroPage => self.bus.read8(operand_address) as u16,
+            AddressingMode::ZeroPageX => self.bus.read8(operand_address).wrapping_add(self.x) as u16,
+            AddressingMode::ZeroPageY => self.bus.read8(operand_address).wrapping_add(self.y) as u16,
+            AddressingMode::Absolute => self.bus.read16(operand_address),
+            AddressingMode::AbsoluteX => self.bus.read16(operand_address).wrapping_add(self.x as u16),
+            AddressingMode::AbsoluteY => self.bus.read16(operand_address).wrapping_add(self.y as u16),
             AddressingMode::Indirect => {
-                let ptr = self.bus.read16(self.pc);
+                let ptr = self.bus.read16(operand_address);
                 if ptr & 0x00FF == 0x00FF {
                     let lo = self.bus.read8(ptr) as u16;
                     let hi = self.bus.read8(ptr & 0xFF00) as u16;
@@ -82,18 +83,18 @@ impl Cpu {
                 }
             }
             AddressingMode::IndirectX => {
-                let ptr = self.bus.read8(self.pc).wrapping_add(self.x);
+                let ptr = self.bus.read8(operand_address).wrapping_add(self.x);
                 let lo = self.bus.read8(ptr as u16) as u16;
                 let hi = self.bus.read8(ptr.wrapping_add(1) as u16) as u16;
                 hi << 8 | lo
             }
             AddressingMode::IndirectY => {
-                let ptr = self.bus.read8(self.pc);
+                let ptr = self.bus.read8(operand_address);
                 let lo = self.bus.read8(ptr as u16) as u16;
                 let hi = self.bus.read8(ptr.wrapping_add(1) as u16) as u16;
                 (hi << 8 | lo).wrapping_add(self.y as u16)
             }
-            AddressingMode::Relative => self.pc,
+            AddressingMode::Relative => operand_address,
             AddressingMode::Implied => todo!(),
             AddressingMode::Accumulator => todo!(),
         }
@@ -225,8 +226,6 @@ impl Cpu {
                 println!("Unknown opcode {:X}", opcode_u8);
             }
             let (opcode, mut cycle, mode, _) = &OPCODES[&opcode_u8];
-            // Consume one byte
-            self.pc += 1;
 
             // Perform an operation
             match opcode {
@@ -343,7 +342,7 @@ impl Cpu {
                 }
                 Opcodes::JSR => {
                     let address = self.get_address(mode);
-                    let stack_data = self.pc + MODE2BYTES[mode] - 1;
+                    let stack_data = self.pc + MODE2BYTES[mode];
                     self.push16(stack_data);
                     self.pc = address;
                 }
@@ -436,11 +435,10 @@ impl Cpu {
                 }
                 Opcodes::RTI => {
                     self.plp();
-                    self.pc = self.pop16();
+                    self.pc = self.pop16().wrapping_sub(1);
                 }
                 Opcodes::RTS => {
-                    let address = self.pop16();
-                    self.pc = address.wrapping_add(1);
+                    self.pc = self.pop16();
                 }
                 Opcodes::SBC => {
                     self.sbc(mode);
@@ -638,7 +636,8 @@ impl Cpu {
             match opcode {
                 Opcodes::JMP => {}
                 Opcodes::JSR => {}
-                _ => self.pc += MODE2BYTES[mode],
+                // 1 for a opcode and rest for a operand
+                _ => self.pc += 1 + MODE2BYTES[mode],
             }
         }
     }

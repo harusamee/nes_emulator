@@ -22,10 +22,10 @@ impl Cpu {
             .collect::<Vec<String>>()
             .join(" ");
 
-        self.pc += 1;
+        let operand_address = self.pc + 1;
         let operands = match mode {
             AddressingMode::Accumulator => String::from("A"),
-            AddressingMode::Immediate => format!("#${:02X}", self.bus.read8(self.pc)),
+            AddressingMode::Immediate => format!("#${:02X}", self.bus.read8(operand_address)),
             AddressingMode::ZeroPage => {
                 let address = self.get_address(mode);
                 let data = self.bus.read8(address);
@@ -36,7 +36,7 @@ impl Cpu {
                 let data = self.bus.read8(address);
                 format!(
                     "${:02X},X @ {:02X} = {:02X}",
-                    self.bus.read8(self.pc),
+                    self.bus.read8(operand_address),
                     address as u8,
                     data
                 )
@@ -46,7 +46,7 @@ impl Cpu {
                 let data = self.bus.read8(address);
                 format!(
                     "${:02X},Y @ {:02X} = {:02X}",
-                    self.bus.read8(self.pc),
+                    self.bus.read8(operand_address),
                     address as u8,
                     data
                 )
@@ -67,52 +67,52 @@ impl Cpu {
                 }
             }
             AddressingMode::AbsoluteX => {
-                let operand_address = self.bus.read16(self.pc);
+                let operand_memory = self.bus.read16(operand_address);
                 let address = self.get_address(mode);
                 format!(
                     "${:04X},X @ {:04X} = {:02X}",
-                    operand_address,
+                    operand_memory,
                     address,
                     self.bus.read8(address),
                 )
             },
             AddressingMode::AbsoluteY => {
-                let operand_address = self.bus.read16(self.pc);
+                let operand_memory = self.bus.read16(operand_address);
                 let address = self.get_address(mode);
                 format!(
                     "${:04X},Y @ {:04X} = {:02X}",
-                    operand_address,
+                    operand_memory,
                     address,
                     self.bus.read8(address),
                 )
             },
             AddressingMode::Indirect => {
-                let address = self.bus.read16(self.pc);
+                let address = self.bus.read16(operand_address);
                 let deref = self.get_address(mode);
                 format!("(${:04X}) = {:04X}", address, deref)
             },
             AddressingMode::IndirectX => {
-                let operand_address = self.bus.read8(self.pc);
-                let operand_plus_x = operand_address.wrapping_add(self.x);
+                let operand_memory = self.bus.read8(operand_address);
+                let operand_plus_x = operand_memory.wrapping_add(self.x);
                 let address = self.get_address(mode);
                 format!(
                     "(${:02X},X) @ {:02X} = {:04X} = {:02X}",
-                    operand_address,
+                    operand_memory,
                     operand_plus_x,
                     address,
                     self.bus.read8(address),
                 )
             }
             AddressingMode::IndirectY => {
-                let operand_address = self.bus.read8(self.pc);
-                let lo = self.bus.read8(operand_address as u16) as u16;
-                let hi = self.bus.read8(operand_address.wrapping_add(1) as u16) as u16;
+                let operand_memory = self.bus.read8(operand_address);
+                let lo = self.bus.read8(operand_memory as u16) as u16;
+                let hi = self.bus.read8(operand_memory.wrapping_add(1) as u16) as u16;
                 let operand_address_deref = hi << 8 | lo;
 
                 let address = self.get_address(mode);
                 format!(
                     "(${:02X}),Y = {:04X} @ {:04X} = {:02X}",
-                    operand_address,
+                    operand_memory,
                     operand_address_deref,
                     address,
                     self.bus.read8(address),
@@ -121,7 +121,7 @@ impl Cpu {
             AddressingMode::Relative => {
                 let address = self.get_address(mode);
                 let data = self.bus.read8(address);
-                let mut pc_plus_data = self.pc;
+                let mut pc_plus_data = operand_address;
                 if data & 0b1000_0000 > 0 {
                     pc_plus_data = pc_plus_data.wrapping_sub(!data as u16);
                 } else {
@@ -131,8 +131,6 @@ impl Cpu {
             },
             AddressingMode::Implied => String::from(""),
         };
-        self.pc -= 1;
-
 
         let opcode = match is_official {
             true => format!(" {:?}", opcode),
