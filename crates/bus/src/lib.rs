@@ -1,5 +1,5 @@
 use cartridge::Cartridge;
-use ppu::Ppu;
+use ppu::{Ppu, TickResult};
 
 const RAM: u16 = 0x0000;
 const RAM_MIRRORS_END: u16 = 0x1FFF;
@@ -24,7 +24,9 @@ const PRG_ROM_END: u16 = 0xffff;
 pub struct Bus {
     work_ram: [u8; 0x800],
     cartridge: Cartridge,
-    ppu: Ppu
+    ppu: Ppu,
+    cycles: usize,
+    should_intr_nmi: bool
 }
 
 impl Bus {
@@ -32,7 +34,9 @@ impl Bus {
         Bus {
             work_ram: [0; 0x800],
             cartridge: Cartridge::new(),
-            ppu: Ppu::new()
+            ppu: Ppu::new(),
+            cycles: 0,
+            should_intr_nmi: false
         }
     }
 
@@ -60,7 +64,7 @@ impl Bus {
             }
             PPU_REG_STATUS => 0,
             PPU_REG_OAM_DATA => 0,
-            PPU_REG_DATA => self.ppu.read_data_0x2007(),
+            PPU_REG_DATA => self.ppu.read_data(),
             PRG_ROM..=PRG_ROM_END => {
                 if self.cartridge.loaded {
                     address -= 0x8000;
@@ -86,7 +90,12 @@ impl Bus {
                 let address = address & RAM_EFFECTIVE_BITS;
                 self.work_ram[address as usize] = data;
             }
-            PPU_REG_CTRL => self.ppu.write_ctrl(data),
+            PPU_REG_CTRL => {
+                let tick_result = self.ppu.write_ctrl(data);
+                if tick_result == TickResult::ShouldInterruptNmi {
+                    self.should_intr_nmi = true;
+                }
+            }
             PPU_REG_MASK => todo!(),
             PPU_REG_STATUS => panic!("Invalid write of {:X}", address),
             PPU_REG_OAM_ADDRESS => todo!(),
@@ -120,10 +129,25 @@ impl Bus {
         self.write8(address + 1, hi);
     }
 
+    // For writing codes to CPU ram
     pub fn write_range(&mut self, address: u16, data: Vec<u8>) {
         let to = (address as usize) + data.len();
         let range = (address as usize)..to;
         self.work_ram[range].copy_from_slice(&data);
+    }
+
+    pub fn tick(&mut self, cycles: u8) {
+        self.cycles += cycles as usize;
+        let tick_result = self.ppu.tick(cycles * 3);
+        if tick_result == TickResult::ShouldInterruptNmi {
+            self.should_intr_nmi = true;
+        }
+    }
+
+    pub fn should_intr_nmi(&mut self) -> bool {
+        let result = self.should_intr_nmi;
+        self.should_intr_nmi = false;
+        result
     }
 }
 

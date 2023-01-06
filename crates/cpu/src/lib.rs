@@ -9,7 +9,7 @@ pub mod tests {
     mod cpu_tests;
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Copy, Clone)]
 struct Flags {
     n: bool,
     v: bool,
@@ -67,11 +67,19 @@ impl Cpu {
         match mode {
             AddressingMode::Immediate => operand_address,
             AddressingMode::ZeroPage => self.bus.read8(operand_address) as u16,
-            AddressingMode::ZeroPageX => self.bus.read8(operand_address).wrapping_add(self.x) as u16,
-            AddressingMode::ZeroPageY => self.bus.read8(operand_address).wrapping_add(self.y) as u16,
+            AddressingMode::ZeroPageX => {
+                self.bus.read8(operand_address).wrapping_add(self.x) as u16
+            }
+            AddressingMode::ZeroPageY => {
+                self.bus.read8(operand_address).wrapping_add(self.y) as u16
+            }
             AddressingMode::Absolute => self.bus.read16(operand_address),
-            AddressingMode::AbsoluteX => self.bus.read16(operand_address).wrapping_add(self.x as u16),
-            AddressingMode::AbsoluteY => self.bus.read16(operand_address).wrapping_add(self.y as u16),
+            AddressingMode::AbsoluteX => {
+                self.bus.read16(operand_address).wrapping_add(self.x as u16)
+            }
+            AddressingMode::AbsoluteY => {
+                self.bus.read16(operand_address).wrapping_add(self.y as u16)
+            }
             AddressingMode::Indirect => {
                 let ptr = self.bus.read16(operand_address);
                 if ptr & 0x00FF == 0x00FF {
@@ -140,6 +148,29 @@ impl Cpu {
         //println!("pop16 {:X} @ {:X} -> {:X}", data, self.sp, self.sp.wrapping_add(2));
         self.sp = self.sp.wrapping_add(2);
         data
+    }
+
+    fn intr_nmi(&mut self) {
+        self.push16(self.pc);
+
+        let mut flags = self.f;
+        flags.b = false;
+        flags.x = true;
+        let flags = u8::from(flags.n) << 7
+            | u8::from(flags.v) << 6
+            | u8::from(flags.x) << 5
+            | u8::from(flags.b) << 4
+            | u8::from(flags.d) << 3
+            | u8::from(flags.i) << 2
+            | u8::from(flags.z) << 1
+            | u8::from(flags.c) << 0;
+        self.push8(flags);
+
+        self.f.i = false;
+
+        self.bus.tick(2);
+
+        self.pc = self.bus.read16(0xfffa);
     }
 
     fn sbc_impl(&mut self, data: u8) {
@@ -225,21 +256,21 @@ impl Cpu {
             if !OPCODES.contains_key(&opcode_u8) {
                 println!("Unknown opcode {:X}", opcode_u8);
             }
-            let (opcode, mut cycle, mode, _) = &OPCODES[&opcode_u8];
+            let (opcode, mut cycles, mode, _) = &OPCODES[&opcode_u8];
 
             // Perform an operation
             match opcode {
                 Opcodes::BRK => return,
                 Opcodes::ADC => {
                     self.adc(mode);
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::AND => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
                     self.a = self.a & data;
                     self.update_nz(self.a);
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::ASL => {
                     if mode == &AddressingMode::Accumulator {
@@ -257,14 +288,14 @@ impl Cpu {
                         self.update_nz(result);
                     }
                 }
-                Opcodes::BCC => cycle += self.branch(mode, !self.f.c),
-                Opcodes::BCS => cycle += self.branch(mode, self.f.c),
-                Opcodes::BEQ => cycle += self.branch(mode, self.f.z),
-                Opcodes::BMI => cycle += self.branch(mode, self.f.n),
-                Opcodes::BNE => cycle += self.branch(mode, !self.f.z),
-                Opcodes::BPL => cycle += self.branch(mode, !self.f.n),
-                Opcodes::BVC => cycle += self.branch(mode, !self.f.v),
-                Opcodes::BVS => cycle += self.branch(mode, self.f.v),
+                Opcodes::BCC => cycles += self.branch(mode, !self.f.c),
+                Opcodes::BCS => cycles += self.branch(mode, self.f.c),
+                Opcodes::BEQ => cycles += self.branch(mode, self.f.z),
+                Opcodes::BMI => cycles += self.branch(mode, self.f.n),
+                Opcodes::BNE => cycles += self.branch(mode, !self.f.z),
+                Opcodes::BPL => cycles += self.branch(mode, !self.f.n),
+                Opcodes::BVC => cycles += self.branch(mode, !self.f.v),
+                Opcodes::BVS => cycles += self.branch(mode, self.f.v),
                 Opcodes::BIT => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
@@ -283,7 +314,7 @@ impl Cpu {
                     let result = self.a.wrapping_sub(data);
                     self.update_nz(result);
                     self.f.c = self.a >= data;
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::CPX => {
                     let address = self.get_address(mode);
@@ -319,7 +350,7 @@ impl Cpu {
                     let data = self.bus.read8(address);
                     self.a = self.a ^ data;
                     self.update_nz(self.a);
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::INC => {
                     let address = self.get_address(mode);
@@ -350,19 +381,19 @@ impl Cpu {
                     let address = self.get_address(mode);
                     self.a = self.bus.read8(address);
                     self.update_nz(self.a);
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::LDX => {
                     let address = self.get_address(mode);
                     self.x = self.bus.read8(address);
                     self.update_nz(self.x);
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::LDY => {
                     let address = self.get_address(mode);
                     self.y = self.bus.read8(address);
                     self.update_nz(self.y);
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::LSR => {
                     if mode == &AddressingMode::Accumulator {
@@ -384,7 +415,7 @@ impl Cpu {
                     let data = self.bus.read8(address);
                     self.a = self.a | data;
                     self.update_nz(self.a);
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::PHA => self.push8(self.a),
                 Opcodes::PHP => {
@@ -442,7 +473,7 @@ impl Cpu {
                 }
                 Opcodes::SBC => {
                     self.sbc(mode);
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::SEC => self.f.c = true,
                 Opcodes::SED => self.f.d = true,
@@ -574,7 +605,7 @@ impl Cpu {
                     self.sp = result;
 
                     self.update_nz(self.sp);
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::LAX => {
                     let address = self.get_address(mode);
@@ -582,7 +613,7 @@ impl Cpu {
                     self.a = data;
                     self.x = data;
                     self.update_nz(self.x);
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::RLA => {
                     let address = self.get_address(mode);
@@ -626,7 +657,7 @@ impl Cpu {
                 Opcodes::SXA => todo!(),
                 Opcodes::SYA => todo!(),
                 Opcodes::TOP => {
-                    cycle += u8::from(self.page_crossed(mode));
+                    cycles += u8::from(self.page_crossed(mode));
                 }
                 Opcodes::XAA => todo!(),
                 Opcodes::XAS => todo!(),
@@ -634,10 +665,16 @@ impl Cpu {
 
             // Consume some bytes except jumping
             match opcode {
-                Opcodes::JMP => {}
-                Opcodes::JSR => {}
+                Opcodes::JMP | Opcodes::JSR => {}
                 // 1 for a opcode and rest for a operand
                 _ => self.pc += 1 + MODE2BYTES[mode],
+            }
+
+            // Consume cycles
+            self.bus.tick(cycles);
+            if self.bus.should_intr_nmi() {
+                // Proceed nmi if necessary
+                self.intr_nmi();
             }
         }
     }

@@ -101,11 +101,51 @@ impl ControlRegister {
     pub fn update(&mut self, data: u8) {
         self.bits = data;
     }
+
+    pub fn enable_generage_nmi(&self) -> bool {
+        self.contains(ControlRegister::GENERATE_NMI)
+    }
 }
+
+bitflags! {
+    // 7  bit  0
+    // ---- ----
+    // VSO. ....
+    // |||| ||||
+    // |||+-++++- PPU open bus. Returns stale PPU bus contents.
+    // ||+------- Sprite overflow. The intent was for this flag to be set
+    // ||         whenever more than eight sprites appear on a scanline, but a
+    // ||         hardware bug causes the actual behavior to be more complicated
+    // ||         and generate false positives as well as false negatives; see
+    // ||         PPU sprite evaluation. This flag is set during sprite
+    // ||         evaluation and cleared at dot 1 (the second dot) of the
+    // ||         pre-render line.
+    // |+-------- Sprite 0 Hit.  Set when a nonzero pixel of sprite 0 overlaps
+    // |          a nonzero background pixel; cleared at dot 1 of the pre-render
+    // |          line.  Used for raster timing.
+    // +--------- Vertical blank has started (0: not in vblank; 1: in vblank).
+    //            Set at dot 1 of line 241 (the line *after* the post-render
+    //            line); cleared after reading $2002 and at dot 1 of the
+    //            pre-render line.
+    pub struct StatusRegister: u8 {
+        const SPRITE_OVERFLOW         = 0b00100000;
+        const SPRITE_0_HIT            = 0b01000000;
+        const VBLANK_STARTED          = 0b10000000;
+    }
+}
+
 
 pub struct Registers {
     addr: AddressRegister,
     ctrl: ControlRegister,
+    stat: StatusRegister
+}
+
+#[derive(PartialEq, Eq)]
+pub enum TickResult {
+    Noop,
+    ShouldInterruptNmi,
+    ScanlineReset
 }
 
 pub struct Ppu {
@@ -115,7 +155,10 @@ pub struct Ppu {
     pub oam_data: [u8; 256],
     pub reg: Registers,
     pub mirroring: Mirroring,
-    fifo: VecDeque<u8>
+    fifo: VecDeque<u8>,
+
+    cycles: usize,
+    scanlines: usize,
 }
 
 impl Ppu {
@@ -127,10 +170,13 @@ impl Ppu {
             reg: Registers {
                 addr: AddressRegister::new(),
                 ctrl: ControlRegister::new(),
+                stat: StatusRegister::from_bits_truncate(0)
             },
             fifo: VecDeque::from([0]),
             chr_rom: [0; 0x2000].to_vec(),
             mirroring: Mirroring::Invalid,
+            cycles: 0,
+            scanlines: 0,
         }
     }
 
@@ -142,11 +188,38 @@ impl Ppu {
             reg: Registers {
                 addr: AddressRegister::new(),
                 ctrl: ControlRegister::new(),
+                stat: StatusRegister::from_bits_truncate(0),
             },
             fifo: VecDeque::from([0]),
             chr_rom,
-            mirroring
+            mirroring,
+            cycles: 0,
+            scanlines: 0,
         }
+    }
+
+    pub fn tick(&mut self, cycles: u8) -> TickResult {
+        self.cycles += cycles as usize;
+
+        if self.cycles > 341 {
+            self.scanlines += 1;
+            self.cycles -= 341;
+
+            if self.scanlines == 241 {
+                if self.reg.ctrl.enable_generage_nmi() {
+                    self.reg.stat |= StatusRegister::VBLANK_STARTED;
+                    return TickResult::ShouldInterruptNmi;
+                }
+            }
+
+            if self.scanlines >= 262 {
+                self.scanlines = 0;
+                self.reg.stat &= !StatusRegister::VBLANK_STARTED;
+                return TickResult::ScanlineReset;
+            }
+        }
+
+        return TickResult::Noop;
     }
 
     fn increment_vram_addr(&mut self) {
@@ -154,7 +227,7 @@ impl Ppu {
         self.reg.addr.increment(amount);
     }
 
-    pub fn read_data_0x2007(&mut self) -> u8 {
+    pub fn read_data(&mut self) -> u8 {
         let addr = self.reg.addr.get();
         self.increment_vram_addr();
 
@@ -178,8 +251,22 @@ impl Ppu {
         }
     }
 
-    pub fn write_ctrl(&mut self, data: u8) {
+    pub fn read_stat(&mut self) -> u8 {
+        let result = self.reg.stat.bits();
+        self.reg.stat &= !StatusRegister::VBLANK_STARTED;
+        result
+    }
+
+    pub fn write_ctrl(&mut self, data: u8) -> TickResult {
+        let before_nmi_status = self.reg.ctrl.contains(ControlRegister::GENERATE_NMI);
         self.reg.ctrl.update(data);
+        let after_nmi_status = self.reg.ctrl.contains(ControlRegister::GENERATE_NMI);
+
+        if !before_nmi_status && after_nmi_status {
+            TickResult::ShouldInterruptNmi
+        } else {
+            TickResult::Noop
+        }
     }
 
     pub fn write_addr(&mut self, data: u8) {
