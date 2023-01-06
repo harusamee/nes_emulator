@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 
 bus = { path = "../bus" }
+ppu = { path = "../ppu" }
 
 num_enum = "*"
 lazy_static = "*"
