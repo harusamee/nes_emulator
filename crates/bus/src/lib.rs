@@ -55,10 +55,11 @@ impl Bus {
                 self.work_ram[address as usize]
             }
             PPU_REG_CTRL | PPU_REG_MASK | PPU_REG_OAM_ADDRESS | PPU_REG_SCROLL | PPU_REG_OAM_DMA => {
-                panic!("Invalid read of {:X}", address);
+                0
+                // panic!("Invalid read of {:X}", address);
             }
-            PPU_REG_STATUS => todo!(),
-            PPU_REG_OAM_DATA => todo!(),
+            PPU_REG_STATUS => 0,
+            PPU_REG_OAM_DATA => 0,
             PPU_REG_DATA => self.ppu.read_data_0x2007(),
             PRG_ROM..=PRG_ROM_END => {
                 if self.cartridge.loaded {
