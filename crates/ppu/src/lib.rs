@@ -1,10 +1,15 @@
 mod registers;
+mod renderer;
 
 use std::collections::VecDeque;
 
+use renderer::Renderer;
 use registers::{MaskRegister, StatusRegister, AddressRegister, ControlRegister, ScrollRegister};
 use cartridge::Mirroring;
+use sdl2::render::Texture;
 
+pub const WIDTH: usize = 256;
+pub const HEIGHT: usize = 240;
 
 pub struct Registers {
     mask: MaskRegister,
@@ -18,7 +23,8 @@ pub struct Registers {
 #[derive(PartialEq, Eq)]
 pub enum TickResult {
     None,
-    ShouldInterruptNmi,
+    ShouldInterruptNmiAndUpdateTexture,
+    ShouldUpdateTexture,    
     ScanlineReset,
 }
 
@@ -29,10 +35,11 @@ pub struct Ppu {
     pub oam_data: [u8; 256],
     pub reg: Registers,
     pub mirroring: Mirroring,
-    data_fifo: VecDeque<u8>, // temporary buffer for Data Register
+    data_fifo: u8, // temporary buffer for Data Register
 
     cycles: usize,
     scanlines: usize,
+    fb: Renderer
 }
 
 impl Ppu {
@@ -53,11 +60,12 @@ impl Ppu {
                 scrl: ScrollRegister::new(),
                 oam_addr: 0,
             },
-            data_fifo: VecDeque::from([0]),
+            data_fifo: 0,
             chr_rom,
             mirroring,
             cycles: 0,
             scanlines: 0,
+            fb: Renderer::new()
         }
     }
 
@@ -68,10 +76,24 @@ impl Ppu {
             self.scanlines += 1;
             self.cycles -= 341;
 
-            if self.scanlines == 240 {
+            // Render background every 8 lines except 0
+            if (1..=240).contains(&self.scanlines) && self.scanlines & 0b111 == 0 {
+                let row_number = (self.scanlines - 1) / 8;
+                let bg_pattern_addr = self.reg.ctrl & ControlRegister::BACKROUND_PATTERN_ADDR;
+                let offset = (bg_pattern_addr.bits() >> 1) as usize;
+                self.fb.render_bg_row(row_number, offset, &self.chr_rom, &self.palette_table, &self.vram);
+            }
+
+            if self.scanlines == 241 {
+                let offset = (self.reg.ctrl & ControlRegister::SPRITE_PATTERN_ADDR).bits();
+                let sprite_8x16 = self.reg.ctrl.contains(ControlRegister::SPRITE_SIZE);
+                self.fb.render_sprites(offset, sprite_8x16, &self.chr_rom, &self.palette_table, &self.vram, &self.oam_data);
+
                 if self.reg.ctrl.enable_generage_nmi() {
                     self.reg.stat |= StatusRegister::VBLANK_STARTED;
-                    return TickResult::ShouldInterruptNmi;
+                    return TickResult::ShouldInterruptNmiAndUpdateTexture;
+                } else {
+                    return TickResult::ShouldUpdateTexture;
                 }
             }
 
@@ -98,9 +120,11 @@ impl Ppu {
         self.reg.addr.increment(amount);
     }
 
-    pub fn read_stat(&mut self) -> u8 {
+    pub fn read_stat(&mut self, trace: bool) -> u8 {
         let result = self.reg.stat.bits();
-        self.reg.stat &= !StatusRegister::VBLANK_STARTED;
+        if !trace {
+            self.reg.stat &= !StatusRegister::VBLANK_STARTED;
+        }
         result
     }
 
@@ -108,29 +132,50 @@ impl Ppu {
         self.oam_data[self.reg.oam_addr as usize]
     }
 
-    pub fn read_data(&mut self) -> u8 {
+    pub fn read_data(&mut self, trace: bool) -> u8 {
         let addr = self.reg.addr.get();
-        self.increment_vram_addr();
+        if !trace {
+            self.increment_vram_addr();
+        }
 
         match addr {
             0..=0x1fff => {
-                self.data_fifo.push_back(self.chr_rom[addr as usize]);
-                self.data_fifo.pop_front().expect("Invalid operation")
+                if trace {
+                    self.data_fifo
+                } else {
+                    let result = self.data_fifo;
+                    self.data_fifo = self.chr_rom[addr as usize];
+                    result
+                }
             }
             0x2000..=0x3eff => {
                 let mirror_addr = self.get_mirror_addr(addr);
-                self.data_fifo.push_back(self.vram[mirror_addr]);
-                self.data_fifo.pop_front().expect("Invalid operation")
+                if trace {
+                    self.data_fifo
+                } else {
+                    let result = self.data_fifo;
+                    self.data_fifo = self.vram[mirror_addr as usize];
+                    result
+                }
             }
             0x3f00..=0x3fff => {
                 let mirror_addr = addr & 0b0011_1111_0001_1111;
-                self.palette_table[(mirror_addr - 0x3f00) as usize]
+                let palette_addr = (mirror_addr - 0x3f00) as usize;
+                match palette_addr {
+                    0x10 | 0x14 | 0x18 | 0x1c => self.palette_table[palette_addr - 0x10],
+                    otherwise => self.palette_table[otherwise]
+                }
             }
             0x4000..=0xffff => {
                 let addr = addr & 0b0011_1111_1111_1111;
                 let mirror_addr = self.get_mirror_addr(addr);
-                self.data_fifo.push_back(self.vram[mirror_addr]);
-                self.data_fifo.pop_front().expect("Invalid operation")
+                if trace {
+                    self.data_fifo
+                } else {
+                    let result = self.data_fifo;
+                    self.data_fifo = self.vram[mirror_addr as usize];
+                    result
+                }
             }
         }
     }
@@ -160,7 +205,7 @@ impl Ppu {
         let after_nmi_status = self.reg.ctrl.contains(ControlRegister::GENERATE_NMI);
 
         if self.is_vblank() && !before_nmi_status && after_nmi_status {
-            TickResult::ShouldInterruptNmi
+            TickResult::ShouldInterruptNmiAndUpdateTexture
         } else {
             TickResult::None
         }
@@ -181,7 +226,12 @@ impl Ppu {
             }
             0x3f00..=0x3fff => {
                 let mirror_addr = addr & 0b0011_1111_0001_1111;
-                self.vram[(mirror_addr - 0x3f00) as usize] = data;
+                let palette_addr = (mirror_addr - 0x3f00) as usize;
+                let target_addr = match palette_addr {
+                    0x10 | 0x14 | 0x18 | 0x1c => palette_addr - 0x10,
+                    otherwise => otherwise
+                };
+                self.palette_table[target_addr as usize] = data;
             }
             _ => panic!("Invalid ppu vram write {:04X}", addr),
         }
@@ -208,5 +258,9 @@ impl Ppu {
             (Mirroring::Horizontal, 3) => vram_addr - 0x800,
             _ => panic!(),
         }
+    }
+
+    pub fn update_sdl_texture(&self, texture: &mut Texture) {
+        texture.update(None, &self.fb.get_buffer(), WIDTH * 3).unwrap();
     }
 }

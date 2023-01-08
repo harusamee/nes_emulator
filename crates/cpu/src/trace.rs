@@ -2,7 +2,7 @@ use crate::{Cpu, opcode::{OPCODES, MODE2BYTES, AddressingMode, Opcodes}};
 
 impl Cpu {
     pub fn trace(&mut self) -> String {
-        let opcode_u8 = self.bus.read8(self.pc);
+        let opcode_u8 = self.bus.read8_trace(self.pc);
         if !OPCODES.contains_key(&opcode_u8) {
             println!("Unknown opcode {:X}", opcode_u8);
         }
@@ -18,35 +18,35 @@ impl Cpu {
             | u8::from(self.f.c) << 0;
 
         let mem_content = (0..(1 + MODE2BYTES[mode]))
-            .map(|i| format!("{:02X}", self.bus.read8(self.pc + i)))
+            .map(|i| format!("{:02X}", self.bus.read8_trace(self.pc + i)))
             .collect::<Vec<String>>()
             .join(" ");
 
         let operand_address = self.pc + 1;
         let operands = match mode {
             AddressingMode::Accumulator => String::from("A"),
-            AddressingMode::Immediate => format!("#${:02X}", self.bus.read8(operand_address)),
+            AddressingMode::Immediate => format!("#${:02X}", self.bus.read8_trace(operand_address)),
             AddressingMode::ZeroPage => {
                 let address = self.get_address(mode);
-                let data = self.bus.read8(address);
+                let data = self.bus.read8_trace(address);
                 format!("${:02X} = {:02X}", address, data)
             },
             AddressingMode::ZeroPageX => {
                 let address = self.get_address(mode);
-                let data = self.bus.read8(address);
+                let data = self.bus.read8_trace(address);
                 format!(
                     "${:02X},X @ {:02X} = {:02X}",
-                    self.bus.read8(operand_address),
+                    self.bus.read8_trace(operand_address),
                     address as u8,
                     data
                 )
             }
             AddressingMode::ZeroPageY => {
                 let address = self.get_address(mode);
-                let data = self.bus.read8(address);
+                let data = self.bus.read8_trace(address);
                 format!(
                     "${:02X},Y @ {:02X} = {:02X}",
-                    self.bus.read8(operand_address),
+                    self.bus.read8_trace(operand_address),
                     address as u8,
                     data
                 )
@@ -61,38 +61,38 @@ impl Cpu {
                         format!(
                             "${:04X} = {:02X}",
                             address,
-                            self.bus.read8(address),
+                            self.bus.read8_trace(address),
                         )
                     }
                 }
             }
             AddressingMode::AbsoluteX => {
-                let operand_memory = self.bus.read16(operand_address);
+                let operand_memory = self.bus.read16_trace(operand_address);
                 let address = self.get_address(mode);
                 format!(
                     "${:04X},X @ {:04X} = {:02X}",
                     operand_memory,
                     address,
-                    self.bus.read8(address),
+                    self.bus.read8_trace(address),
                 )
             },
             AddressingMode::AbsoluteY => {
-                let operand_memory = self.bus.read16(operand_address);
+                let operand_memory = self.bus.read16_trace(operand_address);
                 let address = self.get_address(mode);
                 format!(
                     "${:04X},Y @ {:04X} = {:02X}",
                     operand_memory,
                     address,
-                    self.bus.read8(address),
+                    self.bus.read8_trace(address),
                 )
             },
             AddressingMode::Indirect => {
-                let address = self.bus.read16(operand_address);
+                let address = self.bus.read16_trace(operand_address);
                 let deref = self.get_address(mode);
                 format!("(${:04X}) = {:04X}", address, deref)
             },
             AddressingMode::IndirectX => {
-                let operand_memory = self.bus.read8(operand_address);
+                let operand_memory = self.bus.read8_trace(operand_address);
                 let operand_plus_x = operand_memory.wrapping_add(self.x);
                 let address = self.get_address(mode);
                 format!(
@@ -100,13 +100,13 @@ impl Cpu {
                     operand_memory,
                     operand_plus_x,
                     address,
-                    self.bus.read8(address),
+                    self.bus.read8_trace(address),
                 )
             }
             AddressingMode::IndirectY => {
-                let operand_memory = self.bus.read8(operand_address);
-                let lo = self.bus.read8(operand_memory as u16) as u16;
-                let hi = self.bus.read8(operand_memory.wrapping_add(1) as u16) as u16;
+                let operand_memory = self.bus.read8_trace(operand_address);
+                let lo = self.bus.read8_trace(operand_memory as u16) as u16;
+                let hi = self.bus.read8_trace(operand_memory.wrapping_add(1) as u16) as u16;
                 let operand_address_deref = hi << 8 | lo;
 
                 let address = self.get_address(mode);
@@ -115,12 +115,12 @@ impl Cpu {
                     operand_memory,
                     operand_address_deref,
                     address,
-                    self.bus.read8(address),
+                    self.bus.read8_trace(address),
                 )
             },
             AddressingMode::Relative => {
                 let address = self.get_address(mode);
-                let data = self.bus.read8(address);
+                let data = self.bus.read8_trace(address);
                 let mut pc_plus_data = operand_address;
                 if data & 0b1000_0000 > 0 {
                     pc_plus_data = pc_plus_data.wrapping_sub(!data as u16);

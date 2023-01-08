@@ -23,7 +23,7 @@ const PRG_ROM_END: u16 = 0xffff;
 pub struct Bus {
     work_ram: [u8; 0x800],
     cartridge: Cartridge,
-    ppu: Ppu,
+    pub ppu: Ppu,
     cycles: usize,
     should_intr_nmi: bool
 }
@@ -51,22 +51,32 @@ impl Bus {
     }
 
     #[must_use]
-    pub fn read8(&mut self, mut address: u16) -> u8 {
+    pub fn read8(&mut self, address: u16) -> u8 {
+        self.read8_impl(address, false)
+    }
+
+    #[must_use]
+    pub fn read8_trace(&mut self, address: u16) -> u8 {
+        self.read8_impl(address, true)
+    }
+
+    pub fn read8_impl(&mut self, address: u16, trace: bool) -> u8 {
         match address {
             RAM..=RAM_MIRRORS_END => {
                 let address = address & RAM_EFFECTIVE_BITS;
                 self.work_ram[address as usize]
             }
-            PPU_REG_CTRL | PPU_REG_MASK | PPU_REG_OAM_ADDRESS | PPU_REG_SCROLL | PPU_REG_ADDRESS | PPU_REG_OAM_DMA => {
+            PPU_REG_CTRL | PPU_REG_MASK | PPU_REG_OAM_ADDRESS | 
+            PPU_REG_SCROLL | PPU_REG_ADDRESS | PPU_REG_OAM_DMA => {
                 0
                 // panic!("Invalid read of {:X}", address);
             }
-            PPU_REG_STATUS => self.ppu.read_stat(),
+            PPU_REG_STATUS => self.ppu.read_stat(trace),
             PPU_REG_OAM_DATA => self.ppu.read_oam_data(),
-            PPU_REG_DATA => self.ppu.read_data(),
+            PPU_REG_DATA => self.ppu.read_data(trace),
             PRG_ROM..=PRG_ROM_END => {
                 if self.cartridge.loaded {
-                    address -= 0x8000;
+                    let mut address = address - 0x8000;
                     if self.cartridge.prg_rom.len() == 0x4000 && address >= 0x4000 {
                         address -= 0x4000;
                     }
@@ -77,7 +87,7 @@ impl Bus {
             }
             PPU_REGISTERS_MIRRORS..=PPU_REGISTERS_MIRRORS_END => {
                 let address = address & 0b0010_0000_0000_0111;
-                self.read8(address)
+                self.read8_impl(address, trace)
             }
             _ => 0u8 // Returns zero if out of range
         }
@@ -91,7 +101,7 @@ impl Bus {
             }
             PPU_REG_CTRL => {
                 let tick_result = self.ppu.write_ctrl(data);
-                if tick_result == TickResult::ShouldInterruptNmi {
+                if tick_result == TickResult::ShouldInterruptNmiAndUpdateTexture {
                     self.should_intr_nmi = true;
                 }
             }
@@ -105,7 +115,8 @@ impl Bus {
             PPU_REG_OAM_DMA => {
                 let dma_start = ((data as u16) << 8) as usize;
                 let dma_end = dma_start + 0xff;
-                self.ppu.oam_data.copy_from_slice(&self.work_ram[dma_start..=dma_end]);
+                let slice = &self.work_ram[dma_start..=dma_end];
+                self.ppu.oam_data.copy_from_slice(slice);
             },
             PPU_REGISTERS_MIRRORS..=PPU_REGISTERS_MIRRORS_END => {
                 let address = address & 0b0010_0000_0000_0111;
@@ -120,8 +131,16 @@ impl Bus {
 
     #[must_use]
     pub fn read16(&mut self, address: u16) -> u16 {
-        let lo = self.read8(address) as u16;
-        let hi = self.read8(address + 1) as u16;
+        self.read16_impl(address, false)
+    }
+
+    pub fn read16_trace(&mut self, address: u16) -> u16 {
+        self.read16_impl(address, true)
+    }
+
+    pub fn read16_impl(&mut self, address: u16, trace: bool) -> u16 {
+        let lo = self.read8_impl(address, trace) as u16;
+        let hi = self.read8_impl(address + 1, trace) as u16;
         hi << 8 | lo
     }
 
@@ -139,19 +158,11 @@ impl Bus {
         self.work_ram[range].copy_from_slice(&data);
     }
 
-    pub fn tick(&mut self, cycles: u8) {
+    pub fn tick(&mut self, cycles: u8) -> TickResult {
         self.cycles += cycles as usize;
-        let tick_result = self.ppu.tick(cycles * 3);
-        if tick_result == TickResult::ShouldInterruptNmi {
-            self.should_intr_nmi = true;
-        }
+        return self.ppu.tick(cycles * 3);
     }
 
-    pub fn should_intr_nmi(&mut self) -> bool {
-        let result = self.should_intr_nmi;
-        self.should_intr_nmi = false;
-        result
-    }
 }
 
 impl Default for Bus {

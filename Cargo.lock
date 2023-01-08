@@ -68,6 +68,7 @@ dependencies = [
  "cartridge",
  "cpu",
  "lazy_static",
+ "ppu",
  "rand",
  "sdl2",
 ]
@@ -105,6 +106,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "cartridge",
+ "sdl2",
 ]
 
 [[package]]

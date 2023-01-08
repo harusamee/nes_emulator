@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 
 cpu = { path = "crates/cpu" }
+ppu = { path = "crates/ppu" }
 bus = { path = "crates/bus" }
 cartridge = { path = "crates/cartridge" }
 

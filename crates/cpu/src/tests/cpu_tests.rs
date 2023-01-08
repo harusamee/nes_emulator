@@ -221,7 +221,8 @@ pub mod tests {
         let mut result: Vec<String> = vec![];
         cpu.run_with_callback(|cpu| {
             result.push(cpu.trace());
-        });
+        },
+        |_| {});
         assert_eq!(
             "0064  A2 01     LDX #$01                        A:01 X:02 Y:03 P:24 SP:FD",
             result[0]
@@ -255,7 +256,8 @@ pub mod tests {
         let mut result: Vec<String> = vec![];
         cpu.run_with_callback(|cpu| {
             result.push(cpu.trace());
-        });
+        },
+        |_| {});
         assert_eq!(
             "0064  11 33     ORA ($33),Y = 0400 @ 0400 = AA  A:00 X:00 Y:00 P:24 SP:FD",
             result[0]

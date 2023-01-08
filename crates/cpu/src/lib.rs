@@ -237,16 +237,17 @@ impl Cpu {
     }
 
     fn run(&mut self) {
-        self.run_with_callback(|_| {});
+        self.run_with_callback(|_| {}, |_| {});
     }
 
     pub fn set_pc(&mut self, pc: u16) {
         self.pc = pc;
     }
 
-    pub fn run_with_callback<F>(&mut self, mut callback: F)
+    pub fn run_with_callback<F,F2>(&mut self, mut callback: F, mut render_callback: F2)
     where
         F: FnMut(&mut Cpu),
+        F2: FnMut(&mut Cpu),
     {
         loop {
             let total_cycles: usize = 0;
@@ -261,7 +262,10 @@ impl Cpu {
 
             // Perform an operation
             match opcode {
-                Opcodes::BRK => return,
+                Opcodes::BRK => {
+                    self.pc += 1;
+                    return;
+                }
                 Opcodes::ADC => {
                     self.adc(mode);
                     cycles += u8::from(self.page_crossed(mode));
@@ -686,11 +690,17 @@ impl Cpu {
                 _ => self.pc += 1 + MODE2BYTES[mode],
             }
 
-            // Consume cycles
-            self.bus.tick(cycles);
-            if self.bus.should_intr_nmi() {
-                // Proceed nmi if necessary
-                self.intr_nmi();
+            // Tell current instruction's tick to PPU through bus
+            // and do callback or generate intr based on `TickResult`
+            match self.bus.tick(cycles) {
+                ppu::TickResult::ShouldInterruptNmiAndUpdateTexture => {
+                    render_callback(self);
+                    self.intr_nmi();
+                }
+                ppu::TickResult::ShouldUpdateTexture => {
+                    render_callback(self);       
+                }
+                _ => {}
             }
         }
     }
