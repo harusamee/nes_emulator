@@ -1,10 +1,8 @@
 use cpu::Cpu;
 use ppu::{ HEIGHT, WIDTH };
 
-use rand::Rng;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::EventPump;
 
@@ -75,10 +73,9 @@ pub fn nes_emulator(args: Vec<String>) {
     };
     let raw = std::fs::read(filename).expect("Could not read the file");
     cpu.bus.load_cartridge(&raw);
-    cpu.set_pc(0x8000);
+    let vector = cpu.bus.read16(0xfffc);
+    cpu.set_pc(vector);
 
-    cpu.bus.ppu.update_sdl_texture(&mut texture);
-    canvas.copy(&texture, None, None).unwrap();
     canvas.present();
 
     let mut prev_line = String::new();

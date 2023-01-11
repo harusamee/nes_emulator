@@ -77,7 +77,8 @@ impl Ppu {
             self.cycles -= 341;
 
             // Render background every 8 lines except 0
-            if (1..=240).contains(&self.scanlines) && self.scanlines & 0b111 == 0 {
+            let show_bg = self.reg.mask.contains(MaskRegister::SHOW_BG);
+            if show_bg && (1..=240).contains(&self.scanlines) && self.scanlines & 0b111 == 0 {
                 let row_number = (self.scanlines - 1) / 8;
                 let bg_pattern_addr = self.reg.ctrl & ControlRegister::BACKROUND_PATTERN_ADDR;
                 let offset = (bg_pattern_addr.bits() >> 1) as usize;
@@ -85,12 +86,15 @@ impl Ppu {
             }
 
             if self.scanlines == 241 {
-                let offset = (self.reg.ctrl & ControlRegister::SPRITE_PATTERN_ADDR).bits();
-                let sprite_8x16 = self.reg.ctrl.contains(ControlRegister::SPRITE_SIZE);
-                self.fb.render_sprites(offset, sprite_8x16, &self.chr_rom, &self.palette_table, &self.vram, &self.oam_data);
+                let show_sprites = self.reg.mask.contains(MaskRegister::SHOW_SPRITES);
+                if show_sprites {
+                    let offset = (self.reg.ctrl & ControlRegister::SPRITE_PATTERN_ADDR).bits();
+                    let sprite_8x16 = self.reg.ctrl.contains(ControlRegister::SPRITE_SIZE);
+                    self.fb.render_sprites(offset, sprite_8x16, &self.chr_rom, &self.palette_table, &self.vram, &self.oam_data);    
+                }
 
+                self.reg.stat |= StatusRegister::VBLANK_STARTED;
                 if self.reg.ctrl.enable_generage_nmi() {
-                    self.reg.stat |= StatusRegister::VBLANK_STARTED;
                     return TickResult::ShouldInterruptNmiAndUpdateTexture;
                 } else {
                     return TickResult::ShouldUpdateTexture;
@@ -124,6 +128,8 @@ impl Ppu {
         let result = self.reg.stat.bits();
         if !trace {
             self.reg.stat &= !StatusRegister::VBLANK_STARTED;
+            self.reg.scrl.reset_latch();
+            self.reg.addr.reset_latch();
         }
         result
     }
@@ -182,6 +188,10 @@ impl Ppu {
 
     pub fn write_mask(&mut self, data: u8) {
         self.reg.mask = MaskRegister::from_bits_truncate(data);
+
+        let bg = self.reg.mask.contains(MaskRegister::SHOW_LEFTMOST_BG);
+        let sprite = self.reg.mask.contains(MaskRegister::SHOW_LEFTMOST_SPRITES);
+        self.fb.set_draw_leftmost(bg, sprite);
     }
 
     pub fn write_oam_addr(&mut self, data: u8) {

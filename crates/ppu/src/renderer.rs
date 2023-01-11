@@ -1,3 +1,5 @@
+use bitflags::bitflags;
+
 use super::{HEIGHT, WIDTH};
 
 type RGB = (u8, u8, u8);
@@ -18,19 +20,37 @@ static SYSTEM_PALLETE: [RGB; 64] = [
    (0x99, 0xFF, 0xFC), (0xDD, 0xDD, 0xDD), (0x11, 0x11, 0x11), (0x11, 0x11, 0x11)
 ];
 
+bitflags! {
+    struct RenderMode: u8 {
+        const IGNORE_BG_COLOR0 = 0b0000_0001;
+        const FLIP_HORIZONTAL = 0b0000_0010;
+        const FLIP_VERTICAL = 0b0000_0100;
+        const BEHIND_BG = 0b0000_1000;
+    }
+}
+
 pub struct Renderer {
     fb: Vec<u8>,
+    draw_leftmost_bg: bool,
+    draw_leftmost_sprites: bool
 }
 
 impl Renderer {
     pub fn new() -> Self {
         Renderer {
             fb: vec![0u8; WIDTH * HEIGHT * 3],
+            draw_leftmost_bg: false,
+            draw_leftmost_sprites: false,
         }
     }
 
-    fn set_pixel(&mut self, x: usize, y: usize, palette: RGB) {
-        let (r, g, b) = palette;
+    pub fn set_draw_leftmost(&mut self, bg: bool, sprite: bool) {
+        self.draw_leftmost_bg = bg;
+        self.draw_leftmost_sprites = sprite;
+    }
+
+    fn set_pixel(&mut self, x: usize, y: usize, rgb: RGB) {
+        let (r, g, b) = rgb;
         let offset = (y * WIDTH + x) * 3;
         if offset + 2 < self.fb.len() {
             self.fb[offset] = r;
@@ -39,36 +59,86 @@ impl Renderer {
         }
     }
 
-    pub fn render_tile(
+    fn render_tile(
         &mut self,
         chr_rom: &Vec<u8>,
         bank: usize,
         tile_id: usize,
         offset_x: usize,
         offset_y: usize,
-        palette: [RGB; 4],
-        is_sprite: bool
+        color_id_list: [usize; 4],
+        bg0_id: usize,
+        mode: RenderMode,
     ) {
+        if offset_x >= WIDTH || offset_y >= HEIGHT {
+            return;
+        }
+
         let tile_start = bank * 0x1000 + tile_id * 16;
         let tile_end = tile_start + 15;
         let tile = &chr_rom[tile_start..=tile_end];
-
+        
         for y in 0..=7 {
             let mut hi = tile[y];
             let mut lo = tile[y + 8];
 
             for x in (0..=7).rev() {
                 let color_index = ((lo & 1) << 1) | (hi & 1);
-                if is_sprite && color_index == 0 {
-                    continue;
-                }
-                let palette = palette[color_index as usize];
-                self.set_pixel(offset_x + x, offset_y + y, palette);
+                let color_id = color_id_list[color_index as usize];
 
                 hi >>= 1;
                 lo >>= 1;
+
+                // Sprite
+                if mode.contains(RenderMode::IGNORE_BG_COLOR0) {
+                    if color_id == bg0_id {
+                        continue;
+                    }
+                    if !self.draw_leftmost_sprites && offset_x == 0 {
+                        continue;
+                    }
+                } else {
+                    // Background
+                    if !self.draw_leftmost_bg && offset_x == 0 {
+                        continue;
+                    }
+                }
+
+                let x = offset_x + if mode.contains(RenderMode::FLIP_HORIZONTAL) { 7 - x } else { x };
+                let y = offset_y + if mode.contains(RenderMode::FLIP_VERTICAL) { 7 - y } else { y };
+                let rgb = SYSTEM_PALLETE[color_id as usize];
+                self.set_pixel(x, y, rgb);                
             }
         }
+    }
+
+    fn get_palette(&self, palette_table: &[u8; 32], offset: usize) -> Vec<[usize; 4]> {
+        vec![
+            [
+                palette_table[0] as usize,
+                palette_table[offset + 1] as usize,
+                palette_table[offset + 2] as usize,
+                palette_table[offset + 3] as usize,
+            ],
+            [
+                palette_table[0] as usize,
+                palette_table[offset + 5] as usize,
+                palette_table[offset + 6] as usize,
+                palette_table[offset + 7] as usize,
+            ],
+            [
+                palette_table[0] as usize,
+                palette_table[offset + 9] as usize,
+                palette_table[offset + 10] as usize,
+                palette_table[offset + 11] as usize,
+            ],
+            [
+                palette_table[0] as usize,
+                palette_table[offset + 13] as usize,
+                palette_table[offset + 14] as usize,
+                palette_table[offset + 15] as usize,
+            ],
+        ]
     }
 
     pub fn render_bg_row(
@@ -79,40 +149,13 @@ impl Renderer {
         palette_table: &[u8; 32],
         vram: &[u8; 2048],
     ) {
+        let palettes = self.get_palette(palette_table, 0);
+
         let tile_start = offset + row_number * WIDTH / 8;
         let tile_end = tile_start + WIDTH / 8;
         let tiles = &vram[tile_start..tile_end];
 
         let attr_start = offset + 0x3c0;
-
-        let palettes = vec![
-            [
-                SYSTEM_PALLETE[palette_table[0] as usize],
-                SYSTEM_PALLETE[palette_table[1] as usize],
-                SYSTEM_PALLETE[palette_table[2] as usize],
-                SYSTEM_PALLETE[palette_table[3] as usize],
-            ],
-            [
-                SYSTEM_PALLETE[palette_table[0] as usize],
-                SYSTEM_PALLETE[palette_table[5] as usize],
-                SYSTEM_PALLETE[palette_table[6] as usize],
-                SYSTEM_PALLETE[palette_table[7] as usize],
-            ],
-            [
-                SYSTEM_PALLETE[palette_table[0] as usize],
-                SYSTEM_PALLETE[palette_table[9] as usize],
-                SYSTEM_PALLETE[palette_table[10] as usize],
-                SYSTEM_PALLETE[palette_table[11] as usize],
-            ],
-            [
-                SYSTEM_PALLETE[palette_table[0] as usize],
-                SYSTEM_PALLETE[palette_table[13] as usize],
-                SYSTEM_PALLETE[palette_table[14] as usize],
-                SYSTEM_PALLETE[palette_table[15] as usize],
-            ],
-        ];
-
-        // println!("{} {:04X}-{:04X} {:?}", row_number, tile_start, tile_end, tiles);
 
         for (x, tile_id) in tiles.iter().enumerate() {
             let x_4 = x / 4;
@@ -122,7 +165,7 @@ impl Renderer {
             let attr_data = vram[attr_index];
 
             // Which position of attr_data should we use?
-            let attr_data_shifts = ((row_number & 0b10) | (x & 0b10 >> 1)) * 2;
+            let attr_data_shifts = ((row_number & 0b10) | ((x & 0b10) >> 1)) * 2;
             // Get two bits of attr_data as palette id
             let palette_id = ((attr_data >> attr_data_shifts) & 0b11) as usize;
             let palette = palettes[palette_id];
@@ -134,7 +177,8 @@ impl Renderer {
                 x * 8,
                 row_number * 8,
                 palette,
-                false
+                palette_table[0] as usize,
+                RenderMode::from_bits_truncate(0),
             );
         }
     }
@@ -148,40 +192,44 @@ impl Renderer {
         vram: &[u8; 2048],
         oam_data: &[u8; 256],
     ) {
-        let palettes = vec![
-            [
-                SYSTEM_PALLETE[palette_table[0] as usize],
-                SYSTEM_PALLETE[palette_table[0x11] as usize],
-                SYSTEM_PALLETE[palette_table[0x12] as usize],
-                SYSTEM_PALLETE[palette_table[0x13] as usize],
-            ],
-            [
-                SYSTEM_PALLETE[palette_table[0] as usize],
-                SYSTEM_PALLETE[palette_table[0x15] as usize],
-                SYSTEM_PALLETE[palette_table[0x16] as usize],
-                SYSTEM_PALLETE[palette_table[0x17] as usize],
-            ],
-            [
-                SYSTEM_PALLETE[palette_table[0] as usize],
-                SYSTEM_PALLETE[palette_table[0x19] as usize],
-                SYSTEM_PALLETE[palette_table[0x1a] as usize],
-                SYSTEM_PALLETE[palette_table[0x1b] as usize],
-            ],
-            [
-                SYSTEM_PALLETE[palette_table[0] as usize],
-                SYSTEM_PALLETE[palette_table[0x1d] as usize],
-                SYSTEM_PALLETE[palette_table[0x1e] as usize],
-                SYSTEM_PALLETE[palette_table[0x1f] as usize],
-            ],
-        ];
+        let palettes = self.get_palette(palette_table, 0x10);
+
+        // print!("BG:");
+        // for p in self.get_palette(palette_table, 0x0) {
+        //     print!("{:02X},{:02X},{:02X},{:02X}  ", p[0], p[1], p[2], p[3])
+        // }
+        // println!("");
+        // print!("SP:");
+        // for p in self.get_palette(palette_table, 0x10) {
+        //     print!("{:02X},{:02X},{:02X},{:02X}  ", p[0], p[1], p[2], p[3])
+        // }
+        // println!("");
 
         for i in (0..oam_data.len()).step_by(4) {
-            match oam_data[i..i+4] {
+            match oam_data[i..i + 4] {
                 [y, tile_id, attr, x] => {
                     let palette = palettes[(attr & 0b11) as usize];
-                    self.render_tile(chr_rom, 1, tile_id as usize, x as usize, y as usize, palette, true);
+
+                    let mut mode = RenderMode::IGNORE_BG_COLOR0;
+                    let priority = attr & 0b0010_0000 > 0;
+                    let flip_h = attr & 0b0100_0000 > 0;
+                    let flip_v = attr & 0b1000_0000 > 0;
+                    mode.set(RenderMode::FLIP_HORIZONTAL, flip_h);
+                    mode.set(RenderMode::FLIP_VERTICAL, flip_v);
+                    mode.set(RenderMode::BEHIND_BG, priority);
+
+                    self.render_tile(
+                        chr_rom,
+                        1, // todo
+                        tile_id as usize,
+                        x as usize,
+                        y as usize,
+                        palette,
+                        palette_table[0] as usize,
+                        mode,
+                    );
                 }
-                _ => panic!()
+                _ => panic!(),
             }
         }
     }

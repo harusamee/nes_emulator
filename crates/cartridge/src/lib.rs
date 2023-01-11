@@ -52,6 +52,9 @@ impl Cartridge {
             }
         };
 
+        println!("prg_rom: {:?} 0x{:04X}", prg_rom_range, prg_rom_size);
+        println!("chr_rom: {:?} 0x{:04X}", chr_rom_range, chr_rom_size);
+
         Ok(Cartridge {
             prg_rom: raw[prg_rom_range].to_vec(),
             chr_rom: raw[chr_rom_range].to_vec(),
