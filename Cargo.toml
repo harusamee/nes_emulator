@@ -11,6 +11,7 @@ cpu = { path = "crates/cpu" }
 ppu = { path = "crates/ppu" }
 bus = { path = "crates/bus" }
 cartridge = { path = "crates/cartridge" }
+joypad = { path = "crates/joypad" }
 
 lazy_static = "*"
 bitflags = "*"

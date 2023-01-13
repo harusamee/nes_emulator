@@ -1,12 +1,29 @@
+use std::collections::HashMap;
+
 use cpu::Cpu;
-use ppu::{ HEIGHT, WIDTH };
+use ppu::{HEIGHT, WIDTH};
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::EventPump;
 
+use lazy_static::lazy_static;
+
 const SCALE: usize = 3;
+
+lazy_static! {
+    static ref KEY_MAP: HashMap<Keycode, joypad::JoypadButton> = HashMap::from([
+        (Keycode::Down, joypad::JoypadButton::DOWN),
+        (Keycode::Up, joypad::JoypadButton::UP),
+        (Keycode::Right, joypad::JoypadButton::RIGHT),
+        (Keycode::Left, joypad::JoypadButton::LEFT),~
+        (Keycode::Space, joypad::JoypadButton::SELECT),
+        (Keycode::Return, joypad::JoypadButton::START),
+        (Keycode::A, joypad::JoypadButton::BUTTON_A),
+        (Keycode::S, joypad::JoypadButton::BUTTON_B)
+    ]);
+}
 
 fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) {
     for event in event_pump.poll_iter() {
@@ -16,25 +33,17 @@ fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) {
                 keycode: Some(Keycode::Escape),
                 ..
             } => std::process::exit(0),
-            Event::KeyDown {
-                keycode: Some(Keycode::W),
-                ..
-            } => {
+            Event::KeyDown { keycode, .. } => {
+                let keycode = keycode.unwrap_or(Keycode::Ampersand);
+                if let Some(key) = KEY_MAP.get(&keycode) {
+                    cpu.bus.joypad1.set_button_status(key, true);
+                }
             }
-            Event::KeyDown {
-                keycode: Some(Keycode::S),
-                ..
-            } => {
-            }
-            Event::KeyDown {
-                keycode: Some(Keycode::A),
-                ..
-            } => {
-            }
-            Event::KeyDown {
-                keycode: Some(Keycode::D),
-                ..
-            } => {
+            Event::KeyUp { keycode, .. } => {
+                let keycode = keycode.unwrap_or(Keycode::Ampersand);
+                if let Some(key) = KEY_MAP.get(&keycode) {
+                    cpu.bus.joypad1.set_button_status(key, false);
+                }
             }
             _ => { /* do nothing */ }
         }

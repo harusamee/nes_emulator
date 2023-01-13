@@ -13,6 +13,7 @@ name = "bus"
 version = "0.1.0"
 dependencies = [
  "cartridge",
+ "joypad",
  "ppu",
 ]
 
@@ -48,6 +49,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "joypad"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -67,6 +75,7 @@ dependencies = [
  "bus",
  "cartridge",
  "cpu",
+ "joypad",
  "lazy_static",
  "ppu",
  "rand",

@@ -1,4 +1,5 @@
 use cartridge::Cartridge;
+use joypad::Joypad;
 use ppu::{Ppu, TickResult};
 
 const RAM: u16 = 0x0000;
@@ -15,6 +16,9 @@ const PPU_REG_DATA: u16 = 0x2007;
 pub const PPU_REG_OAM_DMA: u16 = 0x4014;
 const PPU_REGISTERS_MIRRORS: u16 = 0x2008;
 const PPU_REGISTERS_MIRRORS_END: u16 = 0x3FFF;
+const JOYPAD_1: u16 = 0x4016;
+const JOYPAD_2: u16 = 0x4017;
+
 
 pub const PRG_ROM: u16 = 0x8000;
 const PRG_ROM_END: u16 = 0xffff;
@@ -24,6 +28,8 @@ pub struct Bus {
     work_ram: [u8; 0x800],
     cartridge: Cartridge,
     pub ppu: Ppu,
+    pub joypad1: Joypad,
+    joypad2: Joypad,
     cycles: usize,
     should_intr_nmi: bool
 }
@@ -35,7 +41,9 @@ impl Bus {
             cartridge: Cartridge::new(),
             ppu: Ppu::new(),
             cycles: 0,
-            should_intr_nmi: false
+            should_intr_nmi: false,
+            joypad1: Joypad::new(),
+            joypad2: Joypad::new(),
         }
     }
 
@@ -89,6 +97,8 @@ impl Bus {
                 let address = address & 0b0010_0000_0000_0111;
                 self.read8_impl(address, trace)
             }
+            JOYPAD_1 => self.joypad1.read(trace),
+            JOYPAD_2 => self.joypad2.read(trace),
             _ => 0u8 // Returns zero if out of range
         }
     }
@@ -125,6 +135,8 @@ impl Bus {
             PRG_ROM..=PRG_ROM_END => {
                 panic!("Invalid write of {:X}", address);
             }
+            JOYPAD_1 => self.joypad1.write(data),
+            JOYPAD_2 => self.joypad2.write(data),
             _ => {} // No-op if out of range
         }
     }
