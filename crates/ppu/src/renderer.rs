@@ -26,6 +26,7 @@ bitflags! {
         const FLIP_HORIZONTAL = 0b0000_0010;
         const FLIP_VERTICAL = 0b0000_0100;
         const BEHIND_BG = 0b0000_1000;
+        const REPEAT_TILE = 0b0001_0000;
     }
 }
 
@@ -38,7 +39,7 @@ pub struct Renderer {
 impl Renderer {
     pub fn new() -> Self {
         Renderer {
-            fb: vec![0u8; WIDTH * HEIGHT * 3],
+            fb: vec![0u8; WIDTH * HEIGHT * 3 * 4],
             draw_leftmost_bg: false,
             draw_leftmost_sprites: false,
         }
@@ -49,10 +50,16 @@ impl Renderer {
         self.draw_leftmost_sprites = sprite;
     }
 
-    fn set_pixel(&mut self, x: usize, y: usize, rgb: RGB) {
+    fn set_pixel(&mut self, x: usize, y: usize, rgb: RGB, repeat: bool) {
         let (r, g, b) = rgb;
-        let offset = (y * WIDTH + x) * 3;
+        let offset = (y * (WIDTH * 2) + x) * 3;
+
         if offset + 2 < self.fb.len() {
+            self.fb[offset] = r;
+            self.fb[offset + 1] = g;
+            self.fb[offset + 2] = b;
+        } else if repeat {
+            let offset = offset - self.fb.len();
             self.fb[offset] = r;
             self.fb[offset + 1] = g;
             self.fb[offset + 2] = b;
@@ -61,8 +68,7 @@ impl Renderer {
 
     fn render_tile(
         &mut self,
-        chr_rom: &Vec<u8>,
-        bank: usize,
+        chr_rom: &[u8],
         tile_id: usize,
         offset_x: usize,
         offset_y: usize,
@@ -70,11 +76,13 @@ impl Renderer {
         bg0_id: usize,
         mode: RenderMode,
     ) {
-        if offset_x >= WIDTH || offset_y >= HEIGHT {
+        let is_bg = !mode.contains(RenderMode::IGNORE_BG_COLOR0);
+
+        if is_bg && (offset_x >= WIDTH * 2 || offset_y >= HEIGHT * 2) {
             return;
         }
 
-        let tile_start = bank * 0x1000 + tile_id * 16;
+        let tile_start = tile_id * 16;
         let tile_end = tile_start + 15;
         let tile = &chr_rom[tile_start..=tile_end];
         
@@ -89,17 +97,19 @@ impl Renderer {
                 hi >>= 1;
                 lo >>= 1;
 
-                // Sprite
-                if mode.contains(RenderMode::IGNORE_BG_COLOR0) {
-                    if color_id == bg0_id {
-                        continue;
-                    }
-                    if !self.draw_leftmost_sprites && offset_x == 0 {
+                if is_bg {
+                    if !self.draw_leftmost_bg && offset_x == 0 {
                         continue;
                     }
                 } else {
-                    // Background
-                    if !self.draw_leftmost_bg && offset_x == 0 {
+                    // Sprite
+                    if color_id == bg0_id {
+                        continue;
+                    }
+                    if mode.contains(RenderMode::BEHIND_BG) {
+                        continue;
+                    }
+                    if !self.draw_leftmost_sprites && offset_x == 0 {
                         continue;
                     }
                 }
@@ -107,7 +117,8 @@ impl Renderer {
                 let x = offset_x + if mode.contains(RenderMode::FLIP_HORIZONTAL) { 7 - x } else { x };
                 let y = offset_y + if mode.contains(RenderMode::FLIP_VERTICAL) { 7 - y } else { y };
                 let rgb = SYSTEM_PALLETE[color_id as usize];
-                self.set_pixel(x, y, rgb);                
+                let repeat = mode.contains(RenderMode::REPEAT_TILE);
+                self.set_pixel(x, y, rgb, repeat);
             }
         }
     }
@@ -144,18 +155,19 @@ impl Renderer {
     pub fn render_bg_row(
         &mut self,
         row_number: usize,
-        offset: usize,
-        chr_rom: &Vec<u8>,
+        offset_x: usize,
+        offset_y: usize,
+        chr_rom: &[u8],
         palette_table: &[u8; 32],
-        vram: &[u8; 2048],
+        vram: &[u8],
     ) {
         let palettes = self.get_palette(palette_table, 0);
 
-        let tile_start = offset + row_number * WIDTH / 8;
+        let tile_start = row_number * WIDTH / 8;
         let tile_end = tile_start + WIDTH / 8;
         let tiles = &vram[tile_start..tile_end];
 
-        let attr_start = offset + 0x3c0;
+        let attr_start = 0x3c0;
 
         for (x, tile_id) in tiles.iter().enumerate() {
             let x_4 = x / 4;
@@ -172,10 +184,9 @@ impl Renderer {
 
             self.render_tile(
                 chr_rom,
-                0, // todo
                 (*tile_id).into(),
-                x * 8,
-                row_number * 8,
+                offset_x + x * 8,
+                offset_y + row_number * 8,
                 palette,
                 palette_table[0] as usize,
                 RenderMode::from_bits_truncate(0),
@@ -185,11 +196,11 @@ impl Renderer {
 
     pub fn render_sprites(
         &mut self,
-        offset: u8,
         sprite_8x16: bool,
-        chr_rom: &Vec<u8>,
+        offset_x: usize,
+        offset_y: usize,
+        chr_rom: &[u8],
         palette_table: &[u8; 32],
-        vram: &[u8; 2048],
         oam_data: &[u8; 256],
     ) {
         let palettes = self.get_palette(palette_table, 0x10);
@@ -217,13 +228,13 @@ impl Renderer {
                     mode.set(RenderMode::FLIP_HORIZONTAL, flip_h);
                     mode.set(RenderMode::FLIP_VERTICAL, flip_v);
                     mode.set(RenderMode::BEHIND_BG, priority);
+                    mode.set(RenderMode::REPEAT_TILE, true);
 
                     self.render_tile(
                         chr_rom,
-                        1, // todo
                         tile_id as usize,
-                        x as usize,
-                        y as usize,
+                        offset_x + x as usize,
+                        offset_y + y as usize,
                         palette,
                         palette_table[0] as usize,
                         mode,

@@ -27,7 +27,7 @@ static SCALE: f32 = 3.0;
 
 fn set_pixel(fb: &mut Vec<u8>, x: usize, y: usize, p: usize) {
     let (r, g, b) = SYSTEM_PALLETE[p];
-    let offset = (y * WIDTH + x) * 3;
+    let offset = (y * (WIDTH * 2) + x) * 3;
     if offset + 2 < fb.len() {
         fb[offset] = r;
         fb[offset + 1] = g;

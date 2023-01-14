@@ -17,7 +17,7 @@ lazy_static! {
         (Keycode::Down, joypad::JoypadButton::DOWN),
         (Keycode::Up, joypad::JoypadButton::UP),
         (Keycode::Right, joypad::JoypadButton::RIGHT),
-        (Keycode::Left, joypad::JoypadButton::LEFT),~
+        (Keycode::Left, joypad::JoypadButton::LEFT),
         (Keycode::Space, joypad::JoypadButton::SELECT),
         (Keycode::Return, joypad::JoypadButton::START),
         (Keycode::A, joypad::JoypadButton::BUTTON_A),

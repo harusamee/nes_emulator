@@ -171,6 +171,10 @@ impl ScrollRegister {
         }
     }
 
+    pub fn get(&self) -> (u8, u8) {
+        (self.buf_hi, self.buf_lo)
+    }
+
     pub fn update(&mut self, data: u8) {
         if self.buf_sel {
             self.buf_hi = data;
