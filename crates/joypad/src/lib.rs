@@ -29,10 +29,13 @@ impl Joypad {
     }
 
     pub fn read(&mut self, trace: bool) -> u8 {
+        if self.index > 7 {
+            return 1;
+        }
+
         let result = match self.strobe {
             true => self.button.contains(JoypadButton::BUTTON_A),
             false => {
-                if self.index > 7 { return 1; }
                 let mask = 1 << self.index;
                 let result = self.button.bits() & mask > 0;
                 if !trace {
@@ -63,6 +66,5 @@ impl Joypad {
                 self.button = JoypadButton::from_bits_truncate(bits);
             }
         }
-        
     }
 }

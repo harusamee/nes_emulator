@@ -2,7 +2,6 @@ mod registers;
 mod renderer;
 
 use core::panic;
-use std::collections::VecDeque;
 
 use renderer::Renderer;
 use registers::{MaskRegister, StatusRegister, AddressRegister, ControlRegister, ScrollRegister};
@@ -70,6 +69,10 @@ impl Ppu {
         }
     }
 
+    pub fn set_renderer_enabled(&mut self, enabled: bool) {
+        self.fb.set_enabled(enabled);
+    }
+
     fn is_sprite_0_hit(&self) -> bool {
         let y = self.oam_data[0] as usize;
         let x = self.oam_data[3] as usize;
@@ -125,10 +128,11 @@ impl Ppu {
 
                     let scroll = self.reg.scrl.get();
                     let mut x = scroll.0 as usize;
-                    let y = scroll.1 as usize;
+                    let mut y = scroll.1 as usize;
                     match self.reg.ctrl.bits() & 0b11 {
                         0b00 => {},
                         0b01 => x += WIDTH,
+                        0b10 => y += HEIGHT,
                         _ => panic!()
                     }
                     self.fb.render_sprites(sprite_8x16, x, y, chr_rom_slice, &self.palette_table, &self.oam_data);
@@ -339,7 +343,11 @@ impl Ppu {
                 let rect2 = Rect::new(w as i32, 0, x as u32, h);
                 texture.update(rect2, &fb, PITCH).unwrap();
             }
-            0b10 => todo!(),
+            0b10 => {
+                let offset = PITCH * (y as usize) + (x as usize * 3);
+                let range = offset..offset+(PITCH * HEIGHT);
+                texture.update(None, &fb[range], PITCH).unwrap();
+            },
             0b11 => todo!(),
             _ => panic!()
         }

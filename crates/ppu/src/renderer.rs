@@ -33,7 +33,8 @@ bitflags! {
 pub struct Renderer {
     fb: Vec<u8>,
     draw_leftmost_bg: bool,
-    draw_leftmost_sprites: bool
+    draw_leftmost_sprites: bool,
+    enabled: bool
 }
 
 impl Renderer {
@@ -42,12 +43,17 @@ impl Renderer {
             fb: vec![0u8; WIDTH * HEIGHT * 3 * 4],
             draw_leftmost_bg: false,
             draw_leftmost_sprites: false,
+            enabled: true
         }
     }
 
     pub fn set_draw_leftmost(&mut self, bg: bool, sprite: bool) {
         self.draw_leftmost_bg = bg;
         self.draw_leftmost_sprites = sprite;
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
     }
 
     fn set_pixel(&mut self, x: usize, y: usize, rgb: RGB, repeat: bool) {
@@ -161,6 +167,10 @@ impl Renderer {
         palette_table: &[u8; 32],
         vram: &[u8],
     ) {
+        if !self.enabled {
+            return;
+        }
+
         let palettes = self.get_palette(palette_table, 0);
 
         let tile_start = row_number * WIDTH / 8;
@@ -203,18 +213,11 @@ impl Renderer {
         palette_table: &[u8; 32],
         oam_data: &[u8; 256],
     ) {
-        let palettes = self.get_palette(palette_table, 0x10);
+        if !self.enabled {
+            return;
+        }
 
-        // print!("BG:");
-        // for p in self.get_palette(palette_table, 0x0) {
-        //     print!("{:02X},{:02X},{:02X},{:02X}  ", p[0], p[1], p[2], p[3])
-        // }
-        // println!("");
-        // print!("SP:");
-        // for p in self.get_palette(palette_table, 0x10) {
-        //     print!("{:02X},{:02X},{:02X},{:02X}  ", p[0], p[1], p[2], p[3])
-        // }
-        // println!("");
+        let palettes = self.get_palette(palette_table, 0x10);
 
         for i in (0..oam_data.len()).step_by(4) {
             match oam_data[i..i + 4] {

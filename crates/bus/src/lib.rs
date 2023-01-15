@@ -47,11 +47,8 @@ impl Bus {
         }
     }
 
-    pub fn load_cartridge(&mut self, raw: &Vec<u8>) {
-        self.cartridge = match Cartridge::load(raw) {
-            Ok(cartridge) => cartridge,
-            Err(message) => panic!("{}", message),
-        };
+    pub fn load_cartridge(&mut self, cartridge: Cartridge) {
+        self.cartridge = cartridge;
         self.ppu = Ppu::load_cartridge(
             self.cartridge.chr_rom.clone(),
             self.cartridge.screen_mirroring
@@ -98,7 +95,7 @@ impl Bus {
                 self.read8_impl(address, trace)
             }
             JOYPAD_1 => self.joypad1.read(trace),
-            JOYPAD_2 => self.joypad2.read(trace),
+            //JOYPAD_2 => self.joypad2.read(trace),
             _ => 0u8 // Returns zero if out of range
         }
     }
@@ -136,7 +133,7 @@ impl Bus {
                 panic!("Invalid write of {:X}", address);
             }
             JOYPAD_1 => self.joypad1.write(data),
-            JOYPAD_2 => self.joypad2.write(data),
+            //JOYPAD_2 => self.joypad2.write(data),
             _ => {} // No-op if out of range
         }
     }

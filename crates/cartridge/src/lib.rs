@@ -6,12 +6,19 @@ pub enum Mirroring {
     FourScreen,
 }
 
+#[derive(Debug)]
+pub enum VideoSignal {
+    PAL,
+    NTSC
+}
+
 pub struct Cartridge {
     pub prg_rom: Vec<u8>,
     pub chr_rom: Vec<u8>,
     pub mapper: u8,
     pub screen_mirroring: Mirroring,
     pub loaded: bool,
+    pub video_signal: VideoSignal
 }
 
 const NES_TAG: [u8; 4] = [b'N', b'E', b'S', 0x1a];
@@ -24,6 +31,7 @@ impl Cartridge {
             mapper: 0,
             screen_mirroring: Mirroring::Invalid,
             loaded: false,
+            video_signal: VideoSignal::NTSC,
         }
     }
 
@@ -52,14 +60,21 @@ impl Cartridge {
             }
         };
 
+        let video_signal = match raw[9] & 1 {
+            1 => VideoSignal::NTSC,
+            _ => VideoSignal::PAL
+        };
+
         println!("prg_rom: {:?} 0x{:04X}", prg_rom_range, prg_rom_size);
         println!("chr_rom: {:?} 0x{:04X}", chr_rom_range, chr_rom_size);
+        println!("video_signal: {:?}", video_signal);
 
         Ok(Cartridge {
             prg_rom: raw[prg_rom_range].to_vec(),
             chr_rom: raw[chr_rom_range].to_vec(),
-            mapper: mapper,
-            screen_mirroring: screen_mirroring,
+            mapper,
+            screen_mirroring,
+            video_signal,
             loaded: true,
         })
     }
