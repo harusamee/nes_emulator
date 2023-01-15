@@ -81,6 +81,19 @@ impl Ppu {
         && self.reg.mask.contains(MaskRegister::SHOW_SPRITES)
     }
 
+    fn get_scroll_offset(&self) -> (usize, usize) {
+        let scroll = self.reg.scrl.get();
+        let mut x = scroll.0 as usize;
+        let mut y = scroll.1 as usize;
+        match self.reg.ctrl.bits() & 0b11 {
+            0b00 => {},
+            0b01 => x += WIDTH,
+            0b10 => y += HEIGHT,
+            _ => panic!()
+        }
+        (x, y)
+    }
+
     pub fn tick(&mut self, cycles: u8) -> TickResult {
         self.cycles += cycles as usize;
 
@@ -115,6 +128,10 @@ impl Ppu {
                     },
                     Mirroring::FourScreen => todo!(),
                 }
+
+                // Copy current bg into viewport based on the value of scroll register
+                let (x, y) = self.get_scroll_offset();
+                self.fb.copy_to_viewport(row_number, x, y);
             }
 
             // Render sprites at the end of visible scanlines
@@ -126,16 +143,7 @@ impl Ppu {
                     let chr_rom_slice = &self.chr_rom[offset..offset+0x1000];
                     let sprite_8x16 = self.reg.ctrl.contains(ControlRegister::SPRITE_SIZE);
 
-                    let scroll = self.reg.scrl.get();
-                    let mut x = scroll.0 as usize;
-                    let mut y = scroll.1 as usize;
-                    match self.reg.ctrl.bits() & 0b11 {
-                        0b00 => {},
-                        0b01 => x += WIDTH,
-                        0b10 => y += HEIGHT,
-                        _ => panic!()
-                    }
-                    self.fb.render_sprites(sprite_8x16, x, y, chr_rom_slice, &self.palette_table, &self.oam_data);
+                    self.fb.render_sprites(sprite_8x16,chr_rom_slice, &self.palette_table, &self.oam_data);
                 }
 
                 self.reg.stat.set(StatusRegister::VBLANK_STARTED, true);
@@ -318,38 +326,6 @@ impl Ppu {
     }
 
     pub fn update_sdl_texture(&self, texture: &mut Texture) {
-        const PITCH: usize = WIDTH * 3 * 2;
-        let fb = self.fb.get_buffer();
-
-        let (x, y) = self.reg.scrl.get();
-
-        match self.reg.ctrl.bits() & 0b11 {
-            0b00 => {
-                let offset = PITCH * (y as usize) + (x as usize * 3);
-                let range = offset..offset+(PITCH * HEIGHT);
-                texture.update(None, &fb[range], PITCH).unwrap();
-            }
-            0b01 => {
-                let h = HEIGHT as u32;
-                let w = (WIDTH as u32).checked_sub(x as u32).unwrap();
-
-                // Copy from second nametable to the left of screen
-                let rect1 = Rect::new(0, 0, w, h);
-                let offset = PITCH * (y as usize) + (WIDTH + x as usize) * 3;
-                let range = offset..offset+(PITCH * HEIGHT);
-                texture.update(rect1, &fb[range], PITCH).unwrap();
-
-                // Copy from first nametable to the right of screen
-                let rect2 = Rect::new(w as i32, 0, x as u32, h);
-                texture.update(rect2, &fb, PITCH).unwrap();
-            }
-            0b10 => {
-                let offset = PITCH * (y as usize) + (x as usize * 3);
-                let range = offset..offset+(PITCH * HEIGHT);
-                texture.update(None, &fb[range], PITCH).unwrap();
-            },
-            0b11 => todo!(),
-            _ => panic!()
-        }
+        texture.update(None, &self.fb.get_buffer(), WIDTH * 3).unwrap();
     }
 }

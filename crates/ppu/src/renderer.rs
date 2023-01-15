@@ -26,12 +26,19 @@ bitflags! {
         const FLIP_HORIZONTAL = 0b0000_0010;
         const FLIP_VERTICAL = 0b0000_0100;
         const BEHIND_BG = 0b0000_1000;
-        const REPEAT_TILE = 0b0001_0000;
     }
 }
 
+enum TargetBuffer {
+    Framebuffer,
+    Viewport
+}
+
 pub struct Renderer {
+    // The buffer for background tiles of four nametables
     fb: Vec<u8>,
+    // Actual viewport set by the scroll register
+    viewport: Vec<u8>,
     draw_leftmost_bg: bool,
     draw_leftmost_sprites: bool,
     enabled: bool
@@ -41,6 +48,7 @@ impl Renderer {
     pub fn new() -> Self {
         Renderer {
             fb: vec![0u8; WIDTH * HEIGHT * 3 * 4],
+            viewport: vec![0u8; WIDTH * HEIGHT * 3],
             draw_leftmost_bg: false,
             draw_leftmost_sprites: false,
             enabled: true
@@ -56,24 +64,24 @@ impl Renderer {
         self.enabled = enabled;
     }
 
-    fn set_pixel(&mut self, x: usize, y: usize, rgb: RGB, repeat: bool) {
+    fn set_pixel(&mut self, target: &TargetBuffer, x: usize, y: usize, rgb: RGB) {
         let (r, g, b) = rgb;
-        let offset = (y * (WIDTH * 2) + x) * 3;
+        let (target, pitch) = match target {
+            TargetBuffer::Framebuffer => (&mut self.fb, WIDTH * 2 * 3),
+            TargetBuffer::Viewport => (&mut self.viewport, WIDTH * 3),
+        };
+        let offset = y * pitch + x * 3;
 
-        if offset + 2 < self.fb.len() {
-            self.fb[offset] = r;
-            self.fb[offset + 1] = g;
-            self.fb[offset + 2] = b;
-        } else if repeat {
-            let offset = offset - self.fb.len();
-            self.fb[offset] = r;
-            self.fb[offset + 1] = g;
-            self.fb[offset + 2] = b;
+        if offset + 2 < target.len() {
+            target[offset] = r;
+            target[offset + 1] = g;
+            target[offset + 2] = b;
         }
     }
 
     fn render_tile(
         &mut self,
+        target: &TargetBuffer,
         chr_rom: &[u8],
         tile_id: usize,
         offset_x: usize,
@@ -123,8 +131,7 @@ impl Renderer {
                 let x = offset_x + if mode.contains(RenderMode::FLIP_HORIZONTAL) { 7 - x } else { x };
                 let y = offset_y + if mode.contains(RenderMode::FLIP_VERTICAL) { 7 - y } else { y };
                 let rgb = SYSTEM_PALLETE[color_id as usize];
-                let repeat = mode.contains(RenderMode::REPEAT_TILE);
-                self.set_pixel(x, y, rgb, repeat);
+                self.set_pixel(target, x, y, rgb);
             }
         }
     }
@@ -193,6 +200,7 @@ impl Renderer {
             let palette = palettes[palette_id];
 
             self.render_tile(
+                &TargetBuffer::Framebuffer,
                 chr_rom,
                 (*tile_id).into(),
                 offset_x + x * 8,
@@ -207,8 +215,6 @@ impl Renderer {
     pub fn render_sprites(
         &mut self,
         sprite_8x16: bool,
-        offset_x: usize,
-        offset_y: usize,
         chr_rom: &[u8],
         palette_table: &[u8; 32],
         oam_data: &[u8; 256],
@@ -231,13 +237,13 @@ impl Renderer {
                     mode.set(RenderMode::FLIP_HORIZONTAL, flip_h);
                     mode.set(RenderMode::FLIP_VERTICAL, flip_v);
                     mode.set(RenderMode::BEHIND_BG, priority);
-                    mode.set(RenderMode::REPEAT_TILE, true);
 
                     self.render_tile(
+                        &TargetBuffer::Viewport,
                         chr_rom,
                         tile_id as usize,
-                        offset_x + x as usize,
-                        offset_y + y as usize,
+                        x as usize,
+                        y as usize,
                         palette,
                         palette_table[0] as usize,
                         mode,
@@ -248,7 +254,45 @@ impl Renderer {
         }
     }
 
+    fn copy_to_viewport_impl(&mut self, row_number: usize, fb_offset_xy: (usize,usize), vp_offset_xy: (usize,usize), max_width: usize) {
+        const PITCH_FB: usize = WIDTH * 3 * 2;
+        const PITCH_VP: usize = WIDTH * 3;
+
+        let (fb_offset_x, fb_offset_y) = fb_offset_xy;
+        let (vp_offset_x, vp_offset_y) = vp_offset_xy;
+
+        let fb_offset_base = PITCH_FB * (fb_offset_y + row_number * 8) + fb_offset_x * 3;
+        let vp_offset_base = PITCH_VP * (vp_offset_y + row_number * 8) + vp_offset_x * 3;
+        // todo support horizontal scroll
+        let need_copy_twice = fb_offset_x > WIDTH;
+        let mut width = match need_copy_twice {
+            true => WIDTH * 2 - fb_offset_x,
+            false => WIDTH,
+        };
+
+        if width > max_width {
+            width = max_width;
+        }
+
+        for i in 0..=7 {
+            let fb_offset = fb_offset_base + (i * PITCH_FB);
+            let vp_offset = vp_offset_base + (i * PITCH_VP);
+
+            self.viewport[vp_offset..vp_offset+width*3].copy_from_slice(
+                &self.fb[fb_offset..fb_offset+width*3]);
+        }
+
+        if need_copy_twice {
+            let max_width = fb_offset_x - WIDTH;
+            self.copy_to_viewport_impl(row_number, (0, fb_offset_y), (width, 0), max_width);
+        }
+    }
+
+    pub fn copy_to_viewport(&mut self, row_number: usize, offset_x: usize, offset_y: usize) {
+        self.copy_to_viewport_impl(row_number, (offset_x, offset_y), (0, 0), WIDTH);
+    }
+
     pub fn get_buffer(&self) -> &Vec<u8> {
-        &self.fb
+        &self.viewport
     }
 }
