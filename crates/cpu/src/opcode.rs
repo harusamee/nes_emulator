@@ -249,10 +249,10 @@ lazy_static! {
         (0x3e, (Opcodes::ROL, 7, AddressingMode::AbsoluteX, true)),
 
         (0x6a, (Opcodes::ROR, 2, AddressingMode::Accumulator, true)),
-        (0x66, (Opcodes::ROR, 3, AddressingMode::ZeroPage, true)),
-        (0x76, (Opcodes::ROR, 4, AddressingMode::ZeroPageX, true)),
-        (0x6e, (Opcodes::ROR, 4, AddressingMode::Absolute, true)),
-        (0x7e, (Opcodes::ROR, 4, AddressingMode::AbsoluteX, true)),
+        (0x66, (Opcodes::ROR, 5, AddressingMode::ZeroPage, true)),
+        (0x76, (Opcodes::ROR, 6, AddressingMode::ZeroPageX, true)),
+        (0x6e, (Opcodes::ROR, 6, AddressingMode::Absolute, true)),
+        (0x7e, (Opcodes::ROR, 7, AddressingMode::AbsoluteX, true)),
 
         (0x60, (Opcodes::RTS, 6, AddressingMode::Implied, true)),
         (0x40, (Opcodes::RTI, 6, AddressingMode::Implied, true)),

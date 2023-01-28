@@ -136,7 +136,7 @@ impl Renderer {
         }
     }
 
-    fn get_palette(&self, palette_table: &[u8; 32], offset: usize) -> Vec<[usize; 4]> {
+    pub fn get_palette(&self, palette_table: &[u8; 32], offset: usize) -> Vec<[usize; 4]> {
         vec![
             [
                 palette_table[0] as usize,
@@ -165,6 +165,23 @@ impl Renderer {
         ]
     }
 
+    pub fn get_bg_tile_palette(&self, x: usize, y: usize, vram: &[u8], palette_table: &[u8; 32]) -> [usize; 4] {
+        const ATTR_START: usize = 0x3c0;
+        let palettes = self.get_palette(palette_table, 0);
+
+        let x_4 = x / 4;
+        let y_4 = y / 4;
+
+        let attr_index = ATTR_START + y_4 * 8 + x_4;
+        let attr_data = vram[attr_index];
+
+        // Which position of attr_data should we use?
+        let attr_data_shifts = ((y & 0b10) | ((x & 0b10) >> 1)) * 2;
+        // Get two bits of attr_data as palette id
+        let palette_id = ((attr_data >> attr_data_shifts) & 0b11) as usize;
+        palettes[palette_id]
+    }
+
     pub fn render_bg_row(
         &mut self,
         row_number: usize,
@@ -184,20 +201,8 @@ impl Renderer {
         let tile_end = tile_start + WIDTH / 8;
         let tiles = &vram[tile_start..tile_end];
 
-        let attr_start = 0x3c0;
-
         for (x, tile_id) in tiles.iter().enumerate() {
-            let x_4 = x / 4;
-            let y_4 = row_number / 4;
-
-            let attr_index = attr_start + y_4 * 8 + x_4;
-            let attr_data = vram[attr_index];
-
-            // Which position of attr_data should we use?
-            let attr_data_shifts = ((row_number & 0b10) | ((x & 0b10) >> 1)) * 2;
-            // Get two bits of attr_data as palette id
-            let palette_id = ((attr_data >> attr_data_shifts) & 0b11) as usize;
-            let palette = palettes[palette_id];
+            let palette = self.get_bg_tile_palette(x, row_number, vram, palette_table);
 
             self.render_tile(
                 &TargetBuffer::Framebuffer,

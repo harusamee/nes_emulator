@@ -61,13 +61,13 @@ impl Cartridge {
         };
 
         let video_signal = match raw[9] & 1 {
-            1 => VideoSignal::NTSC,
-            _ => VideoSignal::PAL
+            1 => VideoSignal::PAL,
+            _ => VideoSignal::NTSC
         };
 
-        println!("prg_rom: {:?} 0x{:04X}", prg_rom_range, prg_rom_size);
-        println!("chr_rom: {:?} 0x{:04X}", chr_rom_range, chr_rom_size);
-        println!("video_signal: {:?}", video_signal);
+        eprintln!("prg_rom: {:?} 0x{:04X}", prg_rom_range, prg_rom_size);
+        eprintln!("chr_rom: {:?} 0x{:04X}", chr_rom_range, chr_rom_size);
+        eprintln!("video_signal: {:?}", video_signal);
 
         Ok(Cartridge {
             prg_rom: raw[prg_rom_range].to_vec(),

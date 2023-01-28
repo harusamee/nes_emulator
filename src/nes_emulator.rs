@@ -14,10 +14,16 @@ use sdl2::EventPump;
 
 use lazy_static::lazy_static;
 
+struct Settings {
+    trace: bool,
+    wait: bool
+}
+
 #[derive(Clone, Copy)]
 enum Action {
     Joypad(joypad::JoypadButton),
     ToggleTrace,
+    ToggleFrameWait,
     None
 }
 
@@ -31,7 +37,8 @@ lazy_static! {
         (Keycode::Return, Action::Joypad(JoypadButton::START)),
         (Keycode::A, Action::Joypad(JoypadButton::BUTTON_A)),
         (Keycode::S, Action::Joypad(JoypadButton::BUTTON_B)),
-        (Keycode::T, Action::ToggleTrace)
+        (Keycode::T, Action::ToggleTrace),
+        (Keycode::F, Action::ToggleFrameWait)
     ]);
 }
 
@@ -120,25 +127,32 @@ pub fn nes_emulator(args: Vec<String>) {
     cpu.set_pc(vector);
 
     // For trace
-    let mut enable_trace = false;
     let mut prev_line = String::new();
     let mut same_count = 0;
+
+    let mut settings = Settings { trace: false, wait: true };
 
     // Start emulation
     let start_time = Instant::now();
     let mut frame_count = 0u64;
     let mut skip_frame_count = 0u64;
     cpu.run_with_callback(
-        move |cpu| {
+        &mut settings,
+        |cpu, opaque| {
+            let settings = opaque.downcast_mut::<Settings>().unwrap();
             let result = handle_user_input(cpu, &mut event_pump);
             match result {
                 Action::ToggleTrace => {
-                    enable_trace = !enable_trace;
+                    settings.trace = !settings.trace;
                 },
+                Action::ToggleFrameWait => {
+                    settings.wait = !settings.wait;
+                    println!("Wait: {}", settings.wait);
+                }
                 _ => {},
             }
 
-            if enable_trace {
+            if settings.trace {
                 let line = cpu.trace();
                 print!("{}", line);
                 if prev_line == line {
@@ -151,29 +165,36 @@ pub fn nes_emulator(args: Vec<String>) {
                 prev_line = line;
             }
         },
-        |cpu| {
+        |cpu, opaque| {
+            let settings = opaque.downcast_mut::<Settings>().unwrap();
+
             cpu.bus.ppu.update_sdl_texture(&mut texture);
             canvas.copy(&texture, None, None).unwrap();
             canvas.present();
             frame_count += 1;
 
-            let current_time = Instant::now();
-            let elapsed_time_real = current_time - start_time;
-            let elapsed_time_nes = Duration::from_millis(frame_count * msec_per_frame as u64);
-            let should_wait = elapsed_time_nes > elapsed_time_real;
-            if should_wait {
-                let wait_time = elapsed_time_nes - elapsed_time_real;
-                sleep(wait_time);
-                skip_frame_count = 0;
-            } else {
-                skip_frame_count += 1;
-            }
-            cpu.bus.ppu.set_renderer_enabled(should_wait);
+            // let current_time = Instant::now();
+            // let elapsed_time_real = current_time - start_time;
+            // let elapsed_time_nes = Duration::from_millis(frame_count * msec_per_frame as u64);
+            // let should_wait = elapsed_time_nes > elapsed_time_real;
+            // if should_wait {
+            //     if settings.wait {
+            //         let wait_time = elapsed_time_nes - elapsed_time_real;
+            //         sleep(wait_time);
+            //     }
+            //     skip_frame_count = 0;
+            // } else {
+            //     skip_frame_count += 1;
+            // }
 
-            if skip_frame_count > fps as u64 {
-                cpu.bus.ppu.set_renderer_enabled(true);
-                skip_frame_count = 0;
-            }
+            // if settings.wait {
+            //     cpu.bus.ppu.set_renderer_enabled(skip_frame_count < 5);
+            // }
+
+            // if settings.wait && skip_frame_count > fps as u64 {
+            //     cpu.bus.ppu.set_renderer_enabled(true);
+            //     skip_frame_count = 0;
+            // }
         },
     );
 }

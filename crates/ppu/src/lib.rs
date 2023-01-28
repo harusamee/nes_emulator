@@ -47,6 +47,10 @@ impl Ppu {
         Ppu::load_cartridge(vec![0], Mirroring::Invalid)
     }
 
+    pub fn new_test_vertical() -> Self {
+        Ppu::load_cartridge(vec![0; 2048], Mirroring::Vertical)
+    }
+
     pub fn load_cartridge(chr_rom: Vec<u8>, mirroring: Mirroring) -> Self {
         Ppu {
             vram: [0; 2048],
@@ -63,7 +67,7 @@ impl Ppu {
             data_fifo: 0,
             chr_rom,
             mirroring,
-            cycles: 0,
+            cycles: 21,
             scanlines: 0,
             fb: Renderer::new()
         }
@@ -73,12 +77,86 @@ impl Ppu {
         self.fb.set_enabled(enabled);
     }
 
-    fn is_sprite_0_hit(&self) -> bool {
-        let y = self.oam_data[0] as usize;
-        let x = self.oam_data[3] as usize;
-        (y == self.scanlines as usize)
-        && x <= self.cycles
-        && self.reg.mask.contains(MaskRegister::SHOW_SPRITES)
+    pub fn get_cycles_scanlines(&self) -> (usize, usize) {
+        (self.cycles, self.scanlines)
+    }
+
+    fn sprite_0_hit(&self) -> bool {
+        let sprite_palettes = self.fb.get_palette(&self.palette_table, 0x10);
+
+        let sprite_tile_id = self.oam_data[1] as usize;
+        let sprite_attr = self.oam_data[2];
+        let (scroll_x, scroll_y) = self.get_scroll_offset();
+        let sprite_y = self.oam_data[0] as usize;
+        let sprite_x = self.oam_data[3] as usize;
+
+        let get_bg_color_id = |x: usize, y: usize| -> usize {
+            let x = x % (WIDTH * 2);
+            let y = y % (HEIGHT * 2);
+
+            let x_8 = x / 8;
+            let y_8 = y / 8;
+
+            // todo support vertical scroll
+            let (vram, vram_offset) = match (x < WIDTH, y < HEIGHT) {
+                (true, true) => (&self.vram[0..0x400], y_8 * 32 + x_8),
+                (true, false) => todo!(),
+                (false, true) => (&self.vram[0x400..0x800], y_8 * 32 + x_8 - 32),
+                (false, false) => todo!(),
+            };
+
+            let tile_id = vram[vram_offset] as usize;
+            let chr_rom = &self.chr_rom[self.get_bg_chr_rom_range()];
+
+            let x_lsb3 = x & 0b111;
+            let y_lsb3 = y & 0b111;
+            let hi = chr_rom[tile_id * 16 + y_lsb3] as usize;
+            let lo = chr_rom[tile_id * 16 + y_lsb3 + 8] as usize;
+            let mask = 0b1000_0000 >> x_lsb3;
+            let color_index = (((lo & mask) << 1) | (hi & mask)) as usize >> (0b111 - x_lsb3);
+            let palette = self.fb.get_bg_tile_palette(x_8, y_8, vram, &self.palette_table);
+            palette[color_index]
+        };
+
+        let bg0_id = self.palette_table[0] as usize;
+
+        let sprite_palette = sprite_palettes[(sprite_attr & 0b11) as usize];
+        let sprite_flip_h = sprite_attr & 0b0100_0000 > 0;
+        let sprite_flip_v = sprite_attr & 0b1000_0000 > 0;
+        let sprite_chr_rom = &self.chr_rom[self.get_sprite_chr_rom_range()];
+        let sprite_tile = &sprite_chr_rom[sprite_tile_id*16..=sprite_tile_id*16+15];
+
+        for y in 0..=7 {
+            let y = if sprite_flip_h { 7 - y } else { y };
+            if self.scanlines != sprite_y + y {
+                continue;
+            }
+            let mut sprite_hi = sprite_tile[y];
+            let mut sprite_lo = sprite_tile[y + 8];
+            for x in (0..=7).rev() {
+                let sprite_color_index = ((sprite_lo & 1) << 1) | (sprite_hi & 1);
+                sprite_hi >>= 1;
+                sprite_lo >>= 1;
+
+                let x = if sprite_flip_v { 7 - x } else { x };
+                if self.cycles <= sprite_x + x {
+                    continue;
+                }
+
+                let sprite_color_id = sprite_palette[sprite_color_index as usize];
+                let bg_color_id = get_bg_color_id(sprite_x + x, sprite_y + y);
+
+                if sprite_color_id != bg0_id && bg_color_id != bg0_id {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+
+        // (sy == self.scanlines as usize)
+        // && sx <= self.cycles
+        // && self.reg.mask.contains(MaskRegister::SHOW_SPRITES)
     }
 
     fn get_scroll_offset(&self) -> (usize, usize) {
@@ -94,13 +172,29 @@ impl Ppu {
         (x, y)
     }
 
+    fn get_sprite_chr_rom_range(&self) -> std::ops::Range<usize>   {
+        let sprite_pattern_addr = self.reg.ctrl & ControlRegister::SPRITE_PATTERN_ADDR;
+        let offset = 512 * sprite_pattern_addr.bits() as usize;
+        offset..offset+0x1000
+    }
+
+    fn get_bg_chr_rom_range(&self) -> std::ops::Range<usize>   {
+        let bg_pattern_addr = self.reg.ctrl & ControlRegister::BACKROUND_PATTERN_ADDR;
+        let offset = 256 * bg_pattern_addr.bits() as usize;
+        offset..offset+0x1000
+    }
+
     pub fn tick(&mut self, cycles: u8) -> TickResult {
         self.cycles += cycles as usize;
 
-        if self.cycles > 341 {
-            if self.is_sprite_0_hit() {
+        let show_sprites = self.reg.mask.contains(MaskRegister::SHOW_SPRITES);
+        if show_sprites && (1..=240).contains(&self.scanlines) {
+            if !self.reg.stat.contains(StatusRegister::SPRITE_0_HIT) && self.sprite_0_hit() {
                 self.reg.stat.set(StatusRegister::SPRITE_0_HIT, true);
             }
+        }
+
+        if self.cycles >= 341 {
 
             self.scanlines += 1;
             self.cycles -= 341;
@@ -109,10 +203,8 @@ impl Ppu {
             let show_bg = self.reg.mask.contains(MaskRegister::SHOW_BG);
             if show_bg && (1..=240).contains(&self.scanlines) && self.scanlines & 0b111 == 0 {
                 let row_number = (self.scanlines - 1) / 8;
-
-                let bg_pattern_addr = self.reg.ctrl & ControlRegister::BACKROUND_PATTERN_ADDR;
-                let chr_rom_offset = 256 * bg_pattern_addr.bits() as usize;
-                let chr_rom_slice = &self.chr_rom[chr_rom_offset..chr_rom_offset+0x1000];
+                let range = self.get_bg_chr_rom_range();
+                let chr_rom_slice = &self.chr_rom[range];
 
                 // Draw two screens(rows) for games using PPU scroll
                 let vram_slice_a = &self.vram[0..0x400];
@@ -129,25 +221,21 @@ impl Ppu {
                     Mirroring::FourScreen => todo!(),
                 }
 
-                // Copy current bg into viewport based on the value of scroll register
+                // Copy current bg into viewport based on the value of scroll register and base nametable
                 let (x, y) = self.get_scroll_offset();
                 self.fb.copy_to_viewport(row_number, x, y);
             }
 
             // Render sprites at the end of visible scanlines
             if self.scanlines == 241 {
-                let show_sprites = self.reg.mask.contains(MaskRegister::SHOW_SPRITES);
                 if show_sprites {
-                    let sprite_pattern_addr = self.reg.ctrl & ControlRegister::SPRITE_PATTERN_ADDR;
-                    let offset = 512 * sprite_pattern_addr.bits() as usize;
-                    let chr_rom_slice = &self.chr_rom[offset..offset+0x1000];
                     let sprite_8x16 = self.reg.ctrl.contains(ControlRegister::SPRITE_SIZE);
-
-                    self.fb.render_sprites(sprite_8x16,chr_rom_slice, &self.palette_table, &self.oam_data);
+                    let range = self.get_sprite_chr_rom_range();
+                    self.fb.render_sprites(sprite_8x16, &self.chr_rom[range], &self.palette_table, &self.oam_data);
                 }
 
                 self.reg.stat.set(StatusRegister::VBLANK_STARTED, true);
-                self.reg.stat.set(StatusRegister::SPRITE_0_HIT, false);
+                // self.reg.stat.set(StatusRegister::SPRITE_0_HIT, false);
                 if self.reg.ctrl.enable_generage_nmi() {
                     return TickResult::ShouldInterruptNmiAndUpdateTexture;
                 } else {
@@ -155,6 +243,7 @@ impl Ppu {
                 }
             }
 
+            // Start over
             if self.scanlines >= 262 {
                 self.scanlines = 0;
                 self.reg.stat.set(StatusRegister::VBLANK_STARTED, false);
@@ -167,11 +256,11 @@ impl Ppu {
     }
 
     fn is_rendering(&self) -> bool {
-        (0..=239).contains(&self.scanlines)
+        (0..=239).contains(&self.scanlines) && (self.reg.mask.bits() & 0x18) > 0
     }
 
     fn is_vblank(&self) -> bool {
-        !self.is_rendering()
+        !(0..=239).contains(&self.scanlines)
     }
 
     fn increment_vram_addr(&mut self) {
@@ -227,17 +316,7 @@ impl Ppu {
                     otherwise => self.palette_table[otherwise]
                 }
             }
-            0x4000..=0xffff => {
-                let addr = addr & 0b0011_1111_1111_1111;
-                let mirror_addr = self.get_mirror_addr(addr);
-                if trace {
-                    self.data_fifo
-                } else {
-                    let result = self.data_fifo;
-                    self.data_fifo = self.vram[mirror_addr as usize];
-                    result
-                }
-            }
+            _ => panic!()
         }
     }
 
@@ -254,9 +333,7 @@ impl Ppu {
     }
 
     pub fn write_oam_data(&mut self, data: u8) {
-        if self.is_vblank() {
-            self.oam_data[self.reg.oam_addr as usize] = data;
-        }
+        self.oam_data[self.reg.oam_addr as usize] = data;
         self.reg.oam_addr = self.reg.oam_addr.wrapping_add(1);
     }
 
@@ -328,4 +405,186 @@ impl Ppu {
     pub fn update_sdl_texture(&self, texture: &mut Texture) {
         texture.update(None, &self.fb.get_buffer(), WIDTH * 3).unwrap();
     }
+}
+
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    #[test]
+    fn test_ppu_vram_writes() {
+        let mut ppu = Ppu::new_test_vertical();
+        ppu.write_addr(0x23);
+        ppu.write_addr(0x05);
+        ppu.write_data(0x66);
+
+        assert_eq!(ppu.vram[0x0305], 0x66);
+    }
+
+    #[test]
+    fn test_ppu_vram_reads() {
+        let mut ppu = Ppu::new_test_vertical();
+        ppu.write_ctrl(0);
+        ppu.vram[0x0305] = 0x66;
+
+        ppu.write_addr(0x23);
+        ppu.write_addr(0x05);
+
+        ppu.read_data(false); //load_into_buffer
+        assert_eq!(ppu.reg.addr.get(), 0x2306);
+        assert_eq!(ppu.read_data(false), 0x66);
+    }
+
+    #[test]
+    fn test_ppu_vram_reads_cross_page() {
+        let mut ppu = Ppu::new_test_vertical();
+        ppu.write_ctrl(0);
+        ppu.vram[0x01ff] = 0x66;
+        ppu.vram[0x0200] = 0x77;
+
+        ppu.write_addr(0x21);
+        ppu.write_addr(0xff);
+
+        ppu.read_data(false); //load_into_buffer
+        assert_eq!(ppu.read_data(false), 0x66);
+        assert_eq!(ppu.read_data(false), 0x77);
+    }
+
+    #[test]
+    fn test_ppu_vram_reads_step_32() {
+        let mut ppu = Ppu::new_test_vertical();
+        ppu.write_ctrl(0b100);
+        ppu.vram[0x01ff] = 0x66;
+        ppu.vram[0x01ff + 32] = 0x77;
+        ppu.vram[0x01ff + 64] = 0x88;
+
+        ppu.write_addr(0x21);
+        ppu.write_addr(0xff);
+
+        ppu.read_data(false); //load_into_buffer
+        assert_eq!(ppu.read_data(false), 0x66);
+        assert_eq!(ppu.read_data(false), 0x77);
+        assert_eq!(ppu.read_data(false), 0x88);
+    }
+
+    // Horizontal: https://wiki.nesdev.com/w/index.php/Mirroring
+    //   [0x2000 A ] [0x2400 a ]
+    //   [0x2800 B ] [0x2C00 b ]
+    // #[test]
+    // fn test_vram_horizontal_mirror() {
+    //     let mut ppu = Ppu::new_test_vertical();
+    //     ppu.write_addr(0x24);
+    //     ppu.write_addr(0x05);
+
+    //     ppu.write_data(0x66); //write to a
+
+    //     ppu.write_addr(0x28);
+    //     ppu.write_addr(0x05);
+
+    //     ppu.write_data(0x77); //write to B
+
+    //     ppu.write_addr(0x20);
+    //     ppu.write_addr(0x05);
+
+    //     ppu.read_data(false); //load into buffer
+    //     assert_eq!(ppu.read_data(false), 0x66); //read from A
+
+    //     ppu.write_addr(0x2C);
+    //     ppu.write_addr(0x05);
+
+    //     ppu.read_data(false); //load into buffer
+    //     assert_eq!(ppu.read_data(false), 0x77); //read from b
+    // }
+
+    // Vertical: https://wiki.nesdev.com/w/index.php/Mirroring
+    //   [0x2000 A ] [0x2400 B ]
+    //   [0x2800 a ] [0x2C00 b ]
+    #[test]
+    fn test_vram_vertical_mirror() {
+        let mut ppu = Ppu::new_test_vertical();
+
+        ppu.write_addr(0x20);
+        ppu.write_addr(0x05);
+
+        ppu.write_data(0x66); //write to A
+
+        ppu.write_addr(0x2C);
+        ppu.write_addr(0x05);
+
+        ppu.write_data(0x77); //write to b
+
+        ppu.write_addr(0x28);
+        ppu.write_addr(0x05);
+
+        ppu.read_data(false); //load into buffer
+        assert_eq!(ppu.read_data(false), 0x66); //read from a
+
+        ppu.write_addr(0x24);
+        ppu.write_addr(0x05);
+
+        ppu.read_data(false); //load into buffer
+        assert_eq!(ppu.read_data(false), 0x77); //read from B
+    }
+
+    #[test]
+    fn test_read_stat_resets_latch() {
+        let mut ppu = Ppu::new_test_vertical();
+        ppu.vram[0x0305] = 0x66;
+
+        ppu.write_addr(0x21);
+        ppu.write_addr(0x23);
+        ppu.write_addr(0x05);
+
+        ppu.read_data(false); //load_into_buffer
+        assert_ne!(ppu.read_data(false), 0x66);
+
+        ppu.read_stat(false);
+
+        ppu.write_addr(0x23);
+        ppu.write_addr(0x05);
+
+        ppu.read_data(false); //load_into_buffer
+        assert_eq!(ppu.read_data(false), 0x66);
+    }
+
+    #[test]
+    fn test_ppu_vram_mirroring() {
+        let mut ppu = Ppu::new_test_vertical();
+        ppu.write_ctrl(0);
+        ppu.vram[0x0305] = 0x66;
+
+        ppu.write_addr(0x63); //0x6305 -> 0x2305
+        ppu.write_addr(0x05);
+
+        ppu.read_data(false); //load into_buffer
+        assert_eq!(ppu.read_data(false), 0x66);
+        // assert_eq!(ppu.addr.read(), 0x0306)
+    }
+
+    #[test]
+    fn test_read_stat_resets_vblank() {
+        let mut ppu = Ppu::new();
+        ppu.reg.stat.set(StatusRegister::VBLANK_STARTED, true);
+
+        let status = ppu.read_stat(false);
+
+        assert_eq!(status >> 7, 1);
+        assert_eq!(ppu.reg.stat.bits() >> 7, 0);
+    }
+
+    #[test]
+    fn test_oam_read_write() {
+        let mut ppu = Ppu::new();
+        ppu.write_oam_addr(0x10);
+        ppu.write_oam_data(0x66);
+        ppu.write_oam_data(0x77);
+
+        ppu.write_oam_addr(0x10);
+        assert_eq!(ppu.read_oam_data(), 0x66);
+
+        ppu.write_oam_addr(0x11);
+        assert_eq!(ppu.read_oam_data(), 0x77);
+    }
+
 }

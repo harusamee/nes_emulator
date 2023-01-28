@@ -137,9 +137,11 @@ impl Cpu {
             false => format!("*{:?}", opcode)
         };
 
+        let (ppu_cycles, ppu_scanlines) = self.bus.ppu.get_cycles_scanlines();
         format!(
-            "{:04X}  {:8} {} {:27} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
-            self.pc, mem_content, opcode, operands, self.a, self.x, self.y, status, self.sp
+            "{:04X}  {:8} {} {:27} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} PPU:{:>3},{:>3} CYC:{}",
+            self.pc, mem_content, opcode, operands, self.a, self.x, self.y, status, self.sp,
+            ppu_scanlines, ppu_cycles, self.total_cycles
         )
     }
 }

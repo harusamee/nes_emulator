@@ -31,6 +31,7 @@ pub struct Cpu {
     y: u8,
     f: Flags,
     pub bus: Bus,
+    total_cycles: usize,
 }
 
 impl Cpu {
@@ -47,6 +48,7 @@ impl Cpu {
                 z: false,
                 c: false,
             },
+            total_cycles: 7,
             ..Default::default()
         }
     }
@@ -114,7 +116,8 @@ impl Cpu {
                 (self.get_address(mode) ^ self.get_address(&AddressingMode::Absolute)) & 0xff00 > 0
             }
             AddressingMode::IndirectY => {
-                (self.get_address(mode) ^ self.get_address(&AddressingMode::Indirect)) & 0xff00 > 0
+                let address_lo = (self.get_address(mode) & 0x00ff) as u8;
+                self.y > address_lo
             }
             _ => false,
         }
@@ -224,34 +227,36 @@ impl Cpu {
 
     fn branch(&mut self, mode: &AddressingMode, condition: bool) -> u8 {
         let mut cycle = 0;
-        let address = self.get_address(mode);
-        let data = self.bus.read8(address) as i8;
         if condition {
+            let address = self.get_address(mode);
+            let data = self.bus.read8(address) as i8;
+
+            let pc_add2 = self.pc.wrapping_add(2);
             self.pc = self.pc.wrapping_add_signed(data as i16);
             cycle += 1;
-            if (self.pc ^ address) & 0xff00 > 0 {
-                cycle += 2;
+
+            if (self.pc ^ pc_add2) & 0xff00 > 0 {
+                cycle += 1;
             }
         }
         cycle
     }
 
     fn run(&mut self) {
-        self.run_with_callback(|_| {}, |_| {});
+        self.run_with_callback(&mut 0, |_,_| {}, |_,_| {});
     }
 
     pub fn set_pc(&mut self, pc: u16) {
         self.pc = pc;
     }
 
-    pub fn run_with_callback<F,F2>(&mut self, mut callback: F, mut render_callback: F2)
+    pub fn run_with_callback<F,F2>(&mut self, opaque: &mut dyn std::any::Any, mut callback: F, mut render_callback: F2)
     where
-        F: FnMut(&mut Cpu),
-        F2: FnMut(&mut Cpu),
+        F: FnMut(&mut Cpu, &mut dyn std::any::Any),
+        F2: FnMut(&mut Cpu, &mut dyn std::any::Any),
     {
         loop {
-            let total_cycles: usize = 0;
-            callback(self);
+            callback(self, opaque);
 
             // Read an opcode
             let opcode_u8 = self.bus.read8(self.pc);
@@ -414,7 +419,9 @@ impl Cpu {
                         self.update_nz(result);
                     }
                 }
-                Opcodes::NOP => {}
+                Opcodes::NOP => {
+                    cycles += u8::from(self.page_crossed(mode));
+                }
                 Opcodes::ORA => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
@@ -497,7 +504,7 @@ impl Cpu {
                         self.bus.tick(64);
                         self.bus.tick(64);
                         cycles += 1;
-                        if total_cycles & 1 > 0 {
+                        if self.total_cycles & 1 > 0 {
                             cycles += 1;
                         }
                     }
@@ -690,15 +697,16 @@ impl Cpu {
                 _ => self.pc += 1 + MODE2BYTES[mode],
             }
 
+            self.total_cycles += cycles as usize;
             // Tell current instruction's tick to PPU through bus
             // and do callback or generate intr based on `TickResult`
             match self.bus.tick(cycles) {
                 ppu::TickResult::ShouldInterruptNmiAndUpdateTexture => {
-                    render_callback(self);
+                    render_callback(self, opaque);
                     self.intr_nmi();
                 }
                 ppu::TickResult::ShouldUpdateTexture => {
-                    render_callback(self);       
+                    render_callback(self, opaque);
                 }
                 _ => {}
             }
