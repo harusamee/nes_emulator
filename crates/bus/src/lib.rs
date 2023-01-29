@@ -167,7 +167,7 @@ impl Bus {
         self.work_ram[range].copy_from_slice(&data);
     }
 
-    pub fn tick(&mut self, cycles: u8) -> TickResult {
+    pub fn tick(&mut self, cycles: u8) -> Vec<TickResult> {
         self.cycles += cycles as usize;
         return self.ppu.tick(cycles * 3);
     }

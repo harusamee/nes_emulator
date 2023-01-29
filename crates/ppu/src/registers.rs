@@ -74,8 +74,8 @@ bitflags! {
     // +--------- Generate an NMI at the start of the
     //            vertical blanking interval (0: off; 1: on)
     pub struct ControlRegister: u8 {
-        const NAMETABLE1              = 0b00000001;
-        const NAMETABLE2              = 0b00000010;
+        const NAMETABLE_X              = 0b00000001;
+        const NAMETABLE_Y              = 0b00000010;
         const VRAM_ADD_INCREMENT      = 0b00000100;
         const SPRITE_PATTERN_ADDR     = 0b00001000;
         const BACKROUND_PATTERN_ADDR  = 0b00010000;

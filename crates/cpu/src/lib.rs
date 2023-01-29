@@ -700,12 +700,13 @@ impl Cpu {
             self.total_cycles += cycles as usize;
             // Tell current instruction's tick to PPU through bus
             // and do callback or generate intr based on `TickResult`
-            match self.bus.tick(cycles) {
-                ppu::TickResult::ShouldInterruptNmiAndUpdateTexture => {
+            let tick_results = self.bus.tick(cycles);
+            match &tick_results {
+                _ if tick_results.contains(&ppu::TickResult::ShouldInterruptNmiAndUpdateTexture) => {
                     render_callback(self, opaque);
                     self.intr_nmi();
                 }
-                ppu::TickResult::ShouldUpdateTexture => {
+                _ if tick_results.contains(&ppu::TickResult::ShouldUpdateTexture) => {
                     render_callback(self, opaque);
                 }
                 _ => {}

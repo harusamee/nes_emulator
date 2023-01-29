@@ -11,6 +11,15 @@ use sdl2::{render::Texture, rect::Rect};
 pub const WIDTH: usize = 256;
 pub const HEIGHT: usize = 240;
 
+#[derive(Default)]
+struct InternalRegister15 {
+    coarse_x: u8,
+    coarse_y: u8,
+    nametable_x: bool,
+    nametable_y: bool,
+    fine_y: u8
+}
+
 pub struct Registers {
     mask: MaskRegister,
     stat: StatusRegister,
@@ -18,6 +27,9 @@ pub struct Registers {
     ctrl: ControlRegister,
     scrl: ScrollRegister,
     oam_addr: u8,
+    internal_t: InternalRegister15,
+    internal_v: InternalRegister15,
+    fine_x: u8
 }
 
 #[derive(PartialEq, Eq)]
@@ -63,6 +75,9 @@ impl Ppu {
                 ctrl: ControlRegister::new(),
                 scrl: ScrollRegister::new(),
                 oam_addr: 0,
+                internal_t: Default::default(),
+                internal_v: Default::default(),
+                fine_x: 0,
             },
             data_fifo: 0,
             chr_rom,
@@ -78,6 +93,7 @@ impl Ppu {
     }
 
     pub fn get_cycles_scanlines(&self) -> (usize, usize) {
+        // this is for trace()
         (self.cycles, self.scanlines)
     }
 
@@ -163,12 +179,14 @@ impl Ppu {
         let scroll = self.reg.scrl.get();
         let mut x = scroll.0 as usize;
         let mut y = scroll.1 as usize;
-        match self.reg.ctrl.bits() & 0b11 {
-            0b00 => {},
-            0b01 => x += WIDTH,
-            0b10 => y += HEIGHT,
-            _ => panic!()
+
+        if self.reg.internal_v.nametable_x {
+            x += WIDTH;
         }
+        if self.reg.internal_v.nametable_y {
+            y += HEIGHT;
+        }
+
         (x, y)
     }
 
@@ -184,17 +202,79 @@ impl Ppu {
         offset..offset+0x1000
     }
 
-    pub fn tick(&mut self, cycles: u8) -> TickResult {
-        self.cycles += cycles as usize;
+    fn increment_x(&mut self) {
+        let v = &mut self.reg.internal_v;
+        if v.coarse_x == 31 {
+            v.coarse_x = 0;
+            v.nametable_x = !v.nametable_x;
+        } else {
+            v.coarse_x += 1;
+        }    
+    }
 
+    fn increment_y(&mut self) {
+        let v = &mut self.reg.internal_v;
+        if v.fine_y < 7 {
+            v.fine_y += 1;
+        } else {
+            v.fine_y = 0;
+            if v.coarse_y == 29 {
+                v.coarse_y = 0;
+                v.nametable_y = !v.nametable_y;           
+            } else {
+                v.coarse_y += 1;
+            }
+        }
+    }
+
+    fn tick_single(&mut self) -> TickResult {
         let show_sprites = self.reg.mask.contains(MaskRegister::SHOW_SPRITES);
-        if show_sprites && (1..=240).contains(&self.scanlines) {
-            if !self.reg.stat.contains(StatusRegister::SPRITE_0_HIT) && self.sprite_0_hit() {
+        let show_bg = self.reg.mask.contains(MaskRegister::SHOW_BG);
+        if (show_sprites || show_bg) && (0..=239).contains(&self.scanlines) {
+            if show_sprites && !self.reg.stat.contains(StatusRegister::SPRITE_0_HIT) && self.sprite_0_hit() {
                 self.reg.stat.set(StatusRegister::SPRITE_0_HIT, true);
+            }
+
+            if (1..=256).contains(&self.cycles) || (327..).contains(&self.cycles) {
+                if self.cycles & 0b111 == 0b111 && self.cycles != 255 {
+                    self.increment_x();
+                }
+                if self.cycles == 256 {
+                    self.increment_y();
+                }
+            } else if self.cycles == 257 {
+                // copy x
+                let v = &mut self.reg.internal_v;
+                let t = &mut self.reg.internal_t;
+                v.nametable_x = t.nametable_x;
+                v.coarse_x = t.coarse_x;
+            }
+        } else if self.scanlines == 261 {
+            if (1..=256).contains(&self.cycles) || (328..).contains(&self.cycles) {
+                if self.cycles & 0b111 == 0b111 && self.cycles != 255 {
+                    self.increment_x();
+                }
+                if self.cycles == 256 {
+                    self.increment_y();
+                }
+            } else if self.cycles == 257 {
+                // copy x
+                let v = &mut self.reg.internal_v;
+                let t = &mut self.reg.internal_t;
+                v.nametable_x = t.nametable_x;
+                v.coarse_x = t.coarse_x;
+            } else if (280..=340).contains(&self.cycles) {
+                let v = &mut self.reg.internal_v;
+                let t = &mut self.reg.internal_t;
+                v.nametable_y = t.nametable_y;
+                v.coarse_y = t.coarse_y;
+                v.fine_y = t.fine_y;
             }
         }
 
-        if self.cycles >= 341 {
+        self.cycles += 1;
+
+        if self.cycles == 341 {
 
             self.scanlines += 1;
             self.cycles -= 341;
@@ -244,7 +324,7 @@ impl Ppu {
             }
 
             // Start over
-            if self.scanlines >= 262 {
+            if self.scanlines == 262 {
                 self.scanlines = 0;
                 self.reg.stat.set(StatusRegister::VBLANK_STARTED, false);
                 self.reg.stat.set(StatusRegister::SPRITE_0_HIT, false);
@@ -255,8 +335,8 @@ impl Ppu {
         return TickResult::None;
     }
 
-    fn is_rendering(&self) -> bool {
-        (0..=239).contains(&self.scanlines) && (self.reg.mask.bits() & 0x18) > 0
+    pub fn tick(&mut self, cycles: u8) -> Vec<TickResult> {
+        (0..cycles).map(|_| self.tick_single()).collect()
     }
 
     fn is_vblank(&self) -> bool {
@@ -345,6 +425,9 @@ impl Ppu {
         let before_nmi_status = self.reg.ctrl.contains(ControlRegister::GENERATE_NMI);
         self.reg.ctrl.update(data);
         let after_nmi_status = self.reg.ctrl.contains(ControlRegister::GENERATE_NMI);
+
+        self.reg.internal_t.nametable_x = self.reg.ctrl.contains(ControlRegister::NAMETABLE_X);
+        self.reg.internal_t.nametable_y = self.reg.ctrl.contains(ControlRegister::NAMETABLE_Y);
 
         if self.is_vblank() && !before_nmi_status && after_nmi_status {
             TickResult::ShouldInterruptNmiAndUpdateTexture
