@@ -9,4 +9,5 @@ edition = "2021"
 
 cartridge = { path = "../cartridge" }
 ppu = { path = "../ppu" }
+apu = { path = "../apu" }
 joypad = { path = "../joypad" }

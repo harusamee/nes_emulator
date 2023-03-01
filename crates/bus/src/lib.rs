@@ -1,3 +1,4 @@
+use apu::{init_null_apu, Apu};
 use cartridge::Cartridge;
 use joypad::Joypad;
 use ppu::{Ppu, TickResult};
@@ -18,20 +19,21 @@ const PPU_REGISTERS_MIRRORS: u16 = 0x2008;
 const PPU_REGISTERS_MIRRORS_END: u16 = 0x3FFF;
 const JOYPAD_1: u16 = 0x4016;
 const JOYPAD_2: u16 = 0x4017;
-
+const APU_REG: u16 = 0x4000;
+const APU_REG_END: u16 = 0x4015;
 
 pub const PRG_ROM: u16 = 0x8000;
 const PRG_ROM_END: u16 = 0xffff;
-
 
 pub struct Bus {
     work_ram: [u8; 0x800],
     cartridge: Cartridge,
     pub ppu: Ppu,
     pub joypad1: Joypad,
+    pub apu: Apu,
     joypad2: Joypad,
     cycles: usize,
-    should_intr_nmi: bool
+    should_intr_nmi: bool,
 }
 
 impl Bus {
@@ -44,6 +46,7 @@ impl Bus {
             should_intr_nmi: false,
             joypad1: Joypad::new(),
             joypad2: Joypad::new(),
+            apu: init_null_apu(),
         }
     }
 
@@ -51,8 +54,12 @@ impl Bus {
         self.cartridge = cartridge;
         self.ppu = Ppu::load_cartridge(
             self.cartridge.chr_rom.clone(),
-            self.cartridge.screen_mirroring
+            self.cartridge.screen_mirroring,
         );
+    }
+
+    pub fn associate_apu(&mut self, apu: Apu) {
+        self.apu = apu;
     }
 
     #[must_use]
@@ -71,8 +78,8 @@ impl Bus {
                 let address = address & RAM_EFFECTIVE_BITS;
                 self.work_ram[address as usize]
             }
-            PPU_REG_CTRL | PPU_REG_MASK | PPU_REG_OAM_ADDRESS | 
-            PPU_REG_SCROLL | PPU_REG_ADDRESS | PPU_REG_OAM_DMA => {
+            PPU_REG_CTRL | PPU_REG_MASK | PPU_REG_OAM_ADDRESS | PPU_REG_SCROLL
+            | PPU_REG_ADDRESS | PPU_REG_OAM_DMA => {
                 0
                 // panic!("Invalid read of {:X}", address);
             }
@@ -85,7 +92,7 @@ impl Bus {
                     if self.cartridge.prg_rom.len() == 0x4000 && address >= 0x4000 {
                         address -= 0x4000;
                     }
-                    self.cartridge.prg_rom[address as usize]    
+                    self.cartridge.prg_rom[address as usize]
                 } else {
                     panic!("Invalid read of {:X}", address);
                 }
@@ -96,7 +103,7 @@ impl Bus {
             }
             JOYPAD_1 => self.joypad1.read(trace),
             //JOYPAD_2 => self.joypad2.read(trace),
-            _ => 0u8 // Returns zero if out of range
+            _ => 0u8, // Returns zero if out of range
         }
     }
 
@@ -124,7 +131,7 @@ impl Bus {
                 let dma_end = dma_start + 0xff;
                 let slice = &self.work_ram[dma_start..=dma_end];
                 self.ppu.oam_data.copy_from_slice(slice);
-            },
+            }
             PPU_REGISTERS_MIRRORS..=PPU_REGISTERS_MIRRORS_END => {
                 let address = address & 0b0010_0000_0000_0111;
                 self.write8(address, data);
@@ -132,6 +139,7 @@ impl Bus {
             PRG_ROM..=PRG_ROM_END => {
                 panic!("Invalid write of {:X}", address);
             }
+            APU_REG..=APU_REG_END => self.apu.write_register(address, data),
             JOYPAD_1 => self.joypad1.write(data),
             //JOYPAD_2 => self.joypad2.write(data),
             _ => {} // No-op if out of range
@@ -169,13 +177,13 @@ impl Bus {
 
     pub fn tick(&mut self, cycles: u8) -> Vec<TickResult> {
         self.cycles += cycles as usize;
+        self.apu.tick(cycles);
         return self.ppu.tick(cycles * 3);
     }
-
 }
 
 impl Default for Bus {
     fn default() -> Self {
-        Bus::new()        
+        Bus::new()
     }
 }

@@ -9,9 +9,11 @@ edition = "2021"
 
 cpu = { path = "crates/cpu" }
 ppu = { path = "crates/ppu" }
+apu = { path = "crates/apu" }
 bus = { path = "crates/bus" }
 cartridge = { path = "crates/cartridge" }
 joypad = { path = "crates/joypad" }
+
 
 lazy_static = "*"
 bitflags = "*"
@@ -19,8 +21,3 @@ sdl2 = "*"
 rand = "=0.7.3"
 
 [workspace]
-
-members = [
-    "crates/cpu",
-    "crates/bus",
-]
