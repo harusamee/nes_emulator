@@ -169,11 +169,16 @@ impl Ppu {
         }
 
         return false;
-
-        // (sy == self.scanlines as usize)
-        // && sx <= self.cycles
-        // && self.reg.mask.contains(MaskRegister::SHOW_SPRITES)
     }
+
+    fn sprite_0_hit_rough(&self) -> bool {
+        let sprite_y = self.oam_data[0] as usize;
+        let sprite_x = self.oam_data[3] as usize;
+        (sprite_y == self.scanlines as usize)
+        && sprite_x <= self.cycles
+        && self.reg.mask.contains(MaskRegister::SHOW_SPRITES)
+    }
+
 
     fn get_scroll_offset(&self) -> (usize, usize) {
         let scroll = self.reg.scrl.get();
@@ -231,7 +236,7 @@ impl Ppu {
         let show_sprites = self.reg.mask.contains(MaskRegister::SHOW_SPRITES);
         let show_bg = self.reg.mask.contains(MaskRegister::SHOW_BG);
         if (show_sprites || show_bg) && (0..=239).contains(&self.scanlines) {
-            if show_sprites && !self.reg.stat.contains(StatusRegister::SPRITE_0_HIT) && self.sprite_0_hit() {
+            if show_sprites && !self.reg.stat.contains(StatusRegister::SPRITE_0_HIT) && self.sprite_0_hit_rough() {
                 self.reg.stat.set(StatusRegister::SPRITE_0_HIT, true);
             }
 
