@@ -56,18 +56,9 @@ impl Apu {
             0x4006 => self.pulse2.set_reg_freq_lo(data),
             0x4007 => self.pulse2.write_3(data),
             // triangle
-            0x4008 => {
-                let linear_counter = data & 0b0111_1111;
-                self.triangle.set_linear_counter(linear_counter);
-                let halt = data & 0b1000_0000 > 0;
-                self.triangle.set_halt(halt);
-            }
+            0x4008 => self.triangle.write_0(data),
             0x400a => self.triangle.set_reg_freq_lo(data),
-            0x400b => {
-                self.triangle.set_reg_freq_hi(data);
-                self.triangle.set_length_counter(data);
-                self.triangle.set_tone_freq();
-            }
+            0x400b => self.triangle.write_3(data),
             // noise
             0x400c => self.noise.write_0(data),
             0x400e => self.noise.write_2(data),
