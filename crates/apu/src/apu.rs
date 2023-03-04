@@ -129,7 +129,6 @@ impl Apu {
 
         self.tick += 1;
         if !self.mode {
-
             static HALF_FRAME: [usize; 2] = [14913, 29829];
             if HALF_FRAME.contains(&self.tick) {
                 self.pulse1.on_length_count();
@@ -170,6 +169,7 @@ impl Apu {
 pub struct ApuSDL {
     pub ringbuf_cons: Consumer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
     callback_count: usize,
+    missing_samples: usize,
 }
 
 impl AudioCallback for ApuSDL {
@@ -177,10 +177,19 @@ impl AudioCallback for ApuSDL {
 
     fn callback(&mut self, out: &mut [f32]) {
         if self.ringbuf_cons.len() > 0 {
+            let rb_len = self.ringbuf_cons.len() - self.ringbuf_cons.free_len();
+            if out.len() > rb_len {
+                self.missing_samples += out.len() - rb_len;
+            }
             self.ringbuf_cons.pop_slice(out);
             self.callback_count += 1;
-            if self.callback_count % 11 == 0 {
-                println!("buffer size {}", self.ringbuf_cons.free_len());
+            if self.callback_count % 44 == 0 {
+                println!(
+                    "free/total buffer size: {}/{}  missing samples: {}",
+                    self.ringbuf_cons.free_len(),
+                    self.ringbuf_cons.len(),
+                    self.missing_samples
+                );
             }
         } else {
             println!(
@@ -197,6 +206,7 @@ impl ApuSDL {
         ApuSDL {
             ringbuf_cons: cons,
             callback_count: 0,
+            missing_samples: 0,
         }
     }
 }

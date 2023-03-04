@@ -1,13 +1,13 @@
 use core::panic;
 use std::collections::HashMap;
-use std::thread::{sleep_ms, sleep, current};
-use std::time::{Instant, Duration};
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
+use apu::init_apu;
 use cartridge::Cartridge;
 use cpu::Cpu;
-use ppu::{HEIGHT, WIDTH};
 use joypad::JoypadButton;
-use apu::{Apu, init_apu};
+use ppu::{HEIGHT, WIDTH};
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -18,7 +18,7 @@ use lazy_static::lazy_static;
 
 struct Settings {
     trace: bool,
-    wait: bool
+    wait: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -26,7 +26,7 @@ enum Action {
     Joypad(joypad::JoypadButton),
     ToggleTrace,
     ToggleFrameWait,
-    None
+    None,
 }
 
 lazy_static! {
@@ -58,7 +58,7 @@ fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) -> Action {
                     match action {
                         Action::Joypad(key) => {
                             cpu.bus.joypad1.set_button_status(key, true);
-                        },
+                        }
                         _ => {
                             return action.clone();
                         }
@@ -71,7 +71,7 @@ fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) -> Action {
                     match action {
                         Action::Joypad(key) => {
                             cpu.bus.joypad1.set_button_status(key, false);
-                        },
+                        }
                         _ => {}
                     }
                 }
@@ -109,16 +109,12 @@ pub fn nes_emulator(args: Vec<String>) {
         .unwrap();
 
     // Read cartridge
-    let filename = if args.len() >= 2 {
-    &args[1]
-    } else {
-        "pacman.nes"
-    };
+    let filename = &args[1];
     let raw = std::fs::read(filename).expect("Could not read the file");
     let cartridge = Cartridge::load(&raw).expect("Invalid cartridge data");
     let fps = match cartridge.video_signal {
         cartridge::VideoSignal::NTSC => 59.94,
-        _ => panic!()
+        _ => panic!(),
     };
     let msec_per_frame = 1000.0 / fps;
 
@@ -134,12 +130,14 @@ pub fn nes_emulator(args: Vec<String>) {
     apu.audio_device.as_ref().unwrap().resume();
     cpu.bus.associate_apu(apu);
 
-
     // For trace
     let mut prev_line = String::new();
     let mut same_count = 0;
 
-    let mut settings = Settings { trace: false, wait: true };
+    let mut settings = Settings {
+        trace: false,
+        wait: true,
+    };
 
     // Start emulation
     let start_time = Instant::now();
@@ -153,12 +151,12 @@ pub fn nes_emulator(args: Vec<String>) {
             match result {
                 Action::ToggleTrace => {
                     settings.trace = !settings.trace;
-                },
+                }
                 Action::ToggleFrameWait => {
                     settings.wait = !settings.wait;
                     println!("Wait: {}", settings.wait);
                 }
-                _ => {},
+                _ => {}
             }
 
             if settings.trace {

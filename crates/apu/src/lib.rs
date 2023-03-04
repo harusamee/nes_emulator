@@ -24,7 +24,7 @@ pub fn init_apu(sdl_context: &Sdl) -> Apu {
         samples: Some(1024), // default sample size
     };
 
-    let rb = HeapRb::<f32>::new((SAMPLES_PER_SEC >> 2) as usize);
+    let rb = HeapRb::<f32>::new((SAMPLES_PER_SEC >> 3) as usize);
     let (prod, cons) = rb.split();
 
     let device = audio_subsystem
