@@ -19,9 +19,6 @@ pub trait WaveTrait: AsWave {
         const CPU_FREQ: f64 = 1.789773 * 1000.0 * 1000.0;
         let in_freq_11bit = self.get_freq_11bit();
         let tone_freq = (CPU_FREQ / (16.0 * (in_freq_11bit as f64 + 1.0))) as f32;
-        if self.as_wave().name == "Pulse2" {
-            println!("tone freq {} -> {}", in_freq_11bit, tone_freq);
-        }
         self.as_mut_wave().tone_freq = tone_freq;
         self.as_mut_wave().phase_inc = tone_freq / SAMPLES_PER_SEC as f32;
     }
