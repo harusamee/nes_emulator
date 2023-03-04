@@ -107,7 +107,7 @@ impl PulseWave {
                 } else {
                     freq
                 };
-                return freq > 0b111_1111_1111;
+                return freq < 0b111_1111_1111;
             }
         }
         false
@@ -152,6 +152,8 @@ impl PulseWave {
 
         if self.can_output() {
             self.update_current_output();
+        } else {
+            self.current_output = 0;
         }
     }
 
@@ -181,6 +183,8 @@ impl PulseWave {
 
         if self.can_output() {
             self.update_current_output();
+        } else {
+            self.current_output = 0;
         }
     }
 
