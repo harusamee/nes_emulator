@@ -4,7 +4,6 @@ use crate::wave_trait::WaveTrait;
 
 pub struct PulseWave {
     base: Wave,
-    phase: f32,
     // 0x4000 or 0x4004
     duty: u8,
     envelope_counter_halt: bool,
@@ -77,7 +76,6 @@ impl PulseWave {
     pub fn new(no: u8) -> Self {
         PulseWave {
             base: Wave::new(&format!("Pulse{}", no)),
-            phase: 0.0,
             duty: 0,
             envelope_counter_halt: false,
             contant_volume: false,

@@ -41,7 +41,7 @@ impl WaveTrait for TriangleWave {
         todo!()
     }
 
-    fn tick(&mut self, tick: usize) {
+    fn tick(&mut self, _tick: usize) {
         self.freq_counter -= 1;
         if self.freq_counter == 0 {
             self.freq_counter = self.get_freq_11bit();

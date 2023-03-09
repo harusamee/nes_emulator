@@ -1,6 +1,5 @@
 use ringbuf::HeapRb;
 use sdl2::{audio::AudioSpecDesired, Sdl};
-use std::{ptr::null, time::Duration};
 
 mod constants;
 use constants::*;
@@ -39,7 +38,10 @@ pub fn init_null_apu() -> Apu {
     Apu::new(prod, None)
 }
 
+#[test]
 fn test_apu() {
+    use std::time::Duration;
+
     let sdl_context = sdl2::init().unwrap();
     let audio_subsystem = sdl_context.audio().unwrap();
 

@@ -19,7 +19,7 @@ pub struct Apu {
     tick: usize,
     ringbuf_prod: Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
     mode: bool,
-    inhib_intr: bool,
+    _inhib_intr: bool,
     //
     pub audio_device: Option<AudioDevice<ApuSDL>>,
 }
@@ -38,7 +38,7 @@ impl Apu {
             tick: 0,
             ringbuf_prod: prod,
             mode: false,
-            inhib_intr: true,
+            _inhib_intr: true,
             audio_device,
         }
     }
