@@ -1,8 +1,8 @@
 use cartridge::Cartridge;
 use cpu::Cpu;
 
-pub fn nestest(_: Vec<String>) {
-    let raw = std::fs::read("nestest.nes").expect("Could not read the file");
+pub fn nestest(args: Vec<String>) {
+    let raw = std::fs::read(&args[2]).expect("Could not read the file");
     let cartridge = Cartridge::load(&raw).expect("Invalid cartridge data");
     let mut cpu = Cpu::new();
     cpu.bus.load_cartridge(cartridge);
