@@ -53,6 +53,7 @@ impl Cpu {
         }
     }
 
+    #[cfg(test)]
     fn load_and_run(&mut self, program: Vec<u8>) {
         self.bus.write_range(0x600, program);
         self.pc = 0x600 as u16;
@@ -242,6 +243,7 @@ impl Cpu {
         cycle
     }
 
+    #[cfg(test)]
     fn run(&mut self) {
         self.run_with_callback(&mut 0, |_,_| {}, |_,_| {});
     }
@@ -580,7 +582,6 @@ impl Cpu {
                             self.f.c = false;
                             self.f.v = true;
                         }
-                        _ => {}
                     };
                 }
                 Opcodes::ASR => {
@@ -611,7 +612,6 @@ impl Cpu {
                     self.update_nz(result);
                     self.f.c = !overflow;
                 }
-                Opcodes::DOP => {}
                 Opcodes::ISB => {
                     let address = self.get_address(mode);
                     let data = self.bus.read8(address);
@@ -683,9 +683,6 @@ impl Cpu {
                 }
                 Opcodes::SXA => todo!(),
                 Opcodes::SYA => todo!(),
-                Opcodes::TOP => {
-                    cycles += u8::from(self.page_crossed(mode));
-                }
                 Opcodes::XAA => todo!(),
                 Opcodes::XAS => todo!(),
             }

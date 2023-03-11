@@ -68,7 +68,7 @@ pub enum Opcodes {
     AXA,
     AXS,
     DCP,
-    DOP,
+    // DOP,
     ISB,
     KIL,
     LAR,
@@ -79,7 +79,7 @@ pub enum Opcodes {
     SRE,
     SXA,
     SYA,
-    TOP,
+    // TOP,
     XAA,
     XAS,
 }
