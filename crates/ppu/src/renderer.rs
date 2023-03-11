@@ -195,8 +195,6 @@ impl Renderer {
             return;
         }
 
-        let palettes = self.get_palette(palette_table, 0);
-
         let tile_start = row_number * WIDTH / 8;
         let tile_end = tile_start + WIDTH / 8;
         let tiles = &vram[tile_start..tile_end];
@@ -219,7 +217,7 @@ impl Renderer {
 
     pub fn render_sprites(
         &mut self,
-        sprite_8x16: bool,
+        // sprite_8x16: bool,
         chr_rom: &[u8],
         palette_table: &[u8; 32],
         oam_data: &[u8; 256],

@@ -6,7 +6,7 @@ use core::panic;
 use renderer::Renderer;
 use registers::{MaskRegister, StatusRegister, AddressRegister, ControlRegister, ScrollRegister};
 use cartridge::Mirroring;
-use sdl2::{render::Texture, rect::Rect};
+use sdl2::render::Texture;
 
 pub const WIDTH: usize = 256;
 pub const HEIGHT: usize = 240;
@@ -29,7 +29,7 @@ pub struct Registers {
     oam_addr: u8,
     internal_t: InternalRegister15,
     internal_v: InternalRegister15,
-    fine_x: u8
+    // fine_x: u8
 }
 
 #[derive(PartialEq, Eq)]
@@ -77,7 +77,7 @@ impl Ppu {
                 oam_addr: 0,
                 internal_t: Default::default(),
                 internal_v: Default::default(),
-                fine_x: 0,
+                // fine_x: 0,
             },
             data_fifo: 0,
             chr_rom,
@@ -97,12 +97,12 @@ impl Ppu {
         (self.cycles, self.scanlines)
     }
 
-    fn sprite_0_hit(&self) -> bool {
+    fn _sprite_0_hit(&self) -> bool {
         let sprite_palettes = self.fb.get_palette(&self.palette_table, 0x10);
 
         let sprite_tile_id = self.oam_data[1] as usize;
         let sprite_attr = self.oam_data[2];
-        let (scroll_x, scroll_y) = self.get_scroll_offset();
+        // let (scroll_x, scroll_y) = self.get_scroll_offset();
         let sprite_y = self.oam_data[0] as usize;
         let sprite_x = self.oam_data[3] as usize;
 
@@ -314,9 +314,8 @@ impl Ppu {
             // Render sprites at the end of visible scanlines
             if self.scanlines == 241 {
                 if show_sprites {
-                    let sprite_8x16 = self.reg.ctrl.contains(ControlRegister::SPRITE_SIZE);
                     let range = self.get_sprite_chr_rom_range();
-                    self.fb.render_sprites(sprite_8x16, &self.chr_rom[range], &self.palette_table, &self.oam_data);
+                    self.fb.render_sprites(&self.chr_rom[range], &self.palette_table, &self.oam_data);
                 }
 
                 self.reg.stat.set(StatusRegister::VBLANK_STARTED, true);
