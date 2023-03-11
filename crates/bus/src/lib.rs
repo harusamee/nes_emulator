@@ -18,7 +18,7 @@ pub const PPU_REG_OAM_DMA: u16 = 0x4014;
 const PPU_REGISTERS_MIRRORS: u16 = 0x2008;
 const PPU_REGISTERS_MIRRORS_END: u16 = 0x3FFF;
 const JOYPAD_1: u16 = 0x4016;
-const JOYPAD_2: u16 = 0x4017;
+// const JOYPAD_2: u16 = 0x4017;
 const APU_REG: u16 = 0x4000;
 const APU_REG_END: u16 = 0x4015;
 
@@ -31,7 +31,7 @@ pub struct Bus {
     pub ppu: Ppu,
     pub joypad1: Joypad,
     pub apu: Apu,
-    joypad2: Joypad,
+    // joypad2: Joypad,
     cycles: usize,
     should_intr_nmi: bool,
 }
@@ -45,7 +45,7 @@ impl Bus {
             cycles: 0,
             should_intr_nmi: false,
             joypad1: Joypad::new(),
-            joypad2: Joypad::new(),
+            // joypad2: Joypad::new(),
             apu: init_null_apu(),
         }
     }
